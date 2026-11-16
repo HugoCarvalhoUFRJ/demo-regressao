@@ -1,0 +1,1829 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font:14px system-ui,-apple-system,sans-serif}
+img{max-width:100%}
+[hidden]{display:none!important}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+</style>
+<script>
+// O tema é escolhido no cabeçalho do site e chega aqui por mensagem, o que funciona também abrindo os arquivos direto do disco.
+(() => {
+  const root = document.documentElement;
+  const apply = t => { if (t === 'dark' || t === 'light') root.setAttribute('data-theme', t); else root.removeAttribute('data-theme'); };
+  try { apply(localStorage.getItem('svm-theme')); } catch (e) {}
+  addEventListener('message', e => { if (e.source === window.parent && e.data && 'svmTheme' in e.data) apply(e.data.svmTheme); });
+})();
+</script>
+<title>Bagging e floresta aleatória</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:ital,wght@0,400;0,600;1,400;1,600&display=swap" media="print" onload="this.media='all'">
+<style>
+/* Layout: o gráfico ocupa a tela como numa aula projetada, com os parâmetros logo acima; à direita, o modelo ajustado. */
+:root {
+  --paper: #fbfbfe; --plot: #ffffff; --ink: #15151f; --muted: #5d5d72; --rule: #d8d8e6; --tint: #eeeef6;
+  --blue: #1596e4; --pt: #1c74c9; --orange: #d9640a; --pink: #c544b8;
+  --warn: #b23a0e; --warn-tint: #fdeee6;
+  /* Escala sequencial de um tom para y e ŷ (duas variáveis): clara para valores baixos, escura para altos */
+  --r0: #cde2fb; --r1: #b7d3f6; --r2: #9ec5f4; --r3: #86b6ef; --r4: #6da7ec; --r5: #5598e7; --r6: #3987e5;
+  --r7: #2a78d6; --r8: #256abf; --r9: #1c5cab; --r10: #184f95; --r11: #104281; --r12: #0d366b;
+  --math: "STIX Two Text", "Latin Modern Roman", "Times New Roman", serif;
+  --ui: "IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --code: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #12131b; --plot: #171823; --ink: #eeeef6; --muted: #a2a2b8; --rule: #33354a; --tint: #23253a;
+    --blue: #4dbbf7; --pt: #5aa8f0; --orange: #f7a55c; --pink: #e679dc;
+    --warn: #ff9d73; --warn-tint: #3a2118; color-scheme: dark;
+    /* No escuro, os valores baixos se apagam no fundo e os altos ficam claros */
+    --r0: #0d366b; --r1: #104281; --r2: #184f95; --r3: #1c5cab; --r4: #256abf; --r5: #2a78d6; --r6: #3987e5;
+    --r7: #5598e7; --r8: #6da7ec; --r9: #86b6ef; --r10: #9ec5f4; --r11: #b7d3f6; --r12: #cde2fb;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #12131b; --plot: #171823; --ink: #eeeef6; --muted: #a2a2b8; --rule: #33354a; --tint: #23253a;
+  --blue: #4dbbf7; --pt: #5aa8f0; --orange: #f7a55c; --pink: #e679dc;
+  --warn: #ff9d73; --warn-tint: #3a2118; color-scheme: dark;
+  --r0: #0d366b; --r1: #104281; --r2: #184f95; --r3: #1c5cab; --r4: #256abf; --r5: #2a78d6; --r6: #3987e5;
+  --r7: #5598e7; --r8: #6da7ec; --r9: #86b6ef; --r10: #9ec5f4; --r11: #b7d3f6; --r12: #cde2fb;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font: 400 15px/1.45 var(--ui);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 14px 20px;
+}
+.app { display: grid; gap: 12px 28px; max-width: 1320px; margin-inline: auto; grid-template-columns: minmax(0, 1fr) 330px; grid-template-areas: "head head" "main side"; }
+header { grid-area: head; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px; }
+h1 { font: 600 clamp(1.4rem, 2.4vw, 1.75rem)/1.15 var(--math); margin: 0; text-wrap: balance; }
+header p { margin: 0; color: var(--muted); }
+main { grid-area: main; min-width: 0; display: grid; gap: 8px; align-content: start; }
+aside { grid-area: side; min-width: 0; display: grid; gap: 16px; align-content: start; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; align-items: center; }
+.bar .left { display: flex; flex-wrap: wrap; gap: 8px; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; background: var(--plot); }
+.seg button { border: 0; border-radius: 0; background: transparent; border-right: 1px solid var(--rule); }
+.seg button:last-child { border-right: 0; }
+.seg button[aria-pressed="true"] { background: var(--ink); color: var(--plot); }
+.acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; flex: 1 1 260px; min-width: 0; }
+/* A largura da lista de dados vem do espaço livre, não do texto da opção mais longa. */
+.acts select { flex: 1 1 200px; width: 0; min-width: 0; max-width: 430px; text-overflow: ellipsis; }
+button, select { font: 500 14px/1 var(--ui); color: var(--ink); background: var(--plot); border: 1px solid var(--rule); border-radius: 7px; padding: 9px 12px; min-height: 36px; }
+button { cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+button:hover { background: var(--tint); }
+.seg button[aria-pressed="true"]:hover { background: var(--ink); }
+button:focus-visible, input:focus-visible, select:focus-visible, .scrollbox:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: default; }
+.params { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; }
+.ctl { display: flex; align-items: center; gap: 8px; flex: 1 1 230px; min-width: 0; }
+.ctl.wide { flex: 1 1 320px; }
+.ctl label { font: italic 400 1.15rem/1 var(--math); white-space: nowrap; }
+.ctl label.word { font: 500 14px/1 var(--ui); }
+.ctl input[type="number"] { width: 4.9em; flex: none; font: 500 14px/1 var(--ui); font-variant-numeric: tabular-nums; color: var(--ink); background: var(--plot); border: 1px solid var(--rule); border-radius: 7px; padding: 7px; min-height: 34px; }
+.ctl input[type="range"] { flex: 1 1 auto; min-width: 60px; margin: 0; accent-color: var(--ink); height: 26px; }
+.say { min-height: 3.1em; display: flex; align-items: center; gap: 9px; padding: 6px 12px; border-radius: 7px; background: var(--tint); line-height: 1.3; }
+.say.warn { background: var(--warn-tint); color: var(--warn); font-weight: 500; }
+.say .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.plotwrap { position: relative; aspect-ratio: 602 / 628; margin-inline: auto; max-width: 100%; width: max(min(100%, 360px), min(100%, calc((100dvh - 325px) * 0.9586))); }
+#cv { position: absolute; left: calc(54 / 602 * 100%); top: calc(8 / 628 * 100%); width: calc(525 / 602 * 100%); height: calc(552 / 628 * 100%); display: block; }
+svg#plot { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+svg#plot[data-tool="add"] { touch-action: none; cursor: crosshair; }
+svg#plot[data-tool="remove"] .hit { cursor: pointer; }
+svg#plot[data-tool="move"] .hit { cursor: grab; }
+svg#plot[data-tool="yedit"] .hit { cursor: ns-resize; }
+svg#plot.dragging, svg#plot.dragging .hit { cursor: grabbing !important; }
+svg#plot[data-tool="yedit"].dragging, svg#plot[data-tool="yedit"].dragging .hit { cursor: ns-resize !important; }
+.frame { fill: none; stroke: var(--ink); stroke-width: 2; }
+.tick { stroke: var(--ink); stroke-width: 1.5; }
+.ticklab { fill: var(--muted); font: 400 16px var(--ui); font-variant-numeric: tabular-nums; }
+.axlab { fill: var(--ink); font: italic 400 23px var(--math); }
+.curve { fill: none; stroke-linejoin: round; stroke-linecap: round; }
+/* Uma variável: a curva ajustada. Duas variáveis: as curvas de nível de ŷ (ou a partição, nas árvores). */
+.hyper { stroke: var(--ink); stroke-width: 3.6; }
+svg#plot[data-mode="2"] .hyper { stroke-width: 1.3; opacity: .55; }
+.ghost { stroke: var(--muted); stroke-width: 2; opacity: .75; }
+.part { stroke: var(--ink); stroke-width: 1.4; stroke-dasharray: 5 4; stroke-linecap: butt; opacity: .7; }
+.hl { stroke: var(--ink); stroke-width: 1.6; stroke-dasharray: 2 3; opacity: .9; }
+.resid { stroke: var(--muted); stroke-width: 1.6; fill: none; opacity: .9; }
+.truef { stroke: var(--orange); stroke-width: 2.4; stroke-dasharray: 9 6; }
+.varc { stroke: var(--muted); stroke-width: 1; opacity: .5; }
+.varm { stroke: var(--pt); stroke-width: 2.6; stroke-dasharray: 1 5; }
+svg#plot[data-mode="2"] .truef { stroke-width: 1.8; stroke-dasharray: 6 5; }
+.probe { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-dasharray: 6 4; pointer-events: none; }
+.probem { fill: var(--plot); stroke: var(--ink); stroke-width: 2.4; pointer-events: none; }
+.dot { stroke: var(--plot); stroke-width: 1.5; fill: var(--pt); }
+svg#plot[data-mode="2"] .dot { stroke: var(--ink); stroke-width: 1.4; }
+.ring { fill: none; stroke: var(--ink); stroke-width: 2.4; }
+.pt:focus { outline: none; }
+.pt:focus-visible .dot { stroke: var(--ink); stroke-width: 3; }
+.hit { fill: transparent; touch-action: none; }
+.lab { font: 500 11.5px/1.2 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin: 0 0 6px; }
+section { min-width: 0; }
+.head-row { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 6px 12px; }
+.bigM { font: 400 2rem/1 var(--math); font-variant-numeric: tabular-nums lining-nums; white-space: nowrap; }
+.pill { font: 600 12.5px/1 var(--ui); padding: 6px 9px; border-radius: 99px; border: 1.5px solid currentColor; white-space: nowrap; margin-bottom: 4px; font-variant-numeric: tabular-nums; }
+.note { color: var(--muted); font-size: 13.5px; margin: 6px 0 0; }
+.eq { font: 400 1.06rem/1.5 var(--math); font-variant-numeric: lining-nums tabular-nums; margin: 0; overflow-wrap: anywhere; }
+.eq + .eq { margin-top: 3px; }
+.math { font-family: var(--math); font-size: 1.07em; font-variant-numeric: lining-nums; }
+sub, sup { font-size: .68em; line-height: 0; }
+.ktab { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 13.5px; }
+.ktab th { font: 500 12.5px/1.2 var(--ui); text-align: right; color: var(--muted); padding: 0 0 3px 6px; }
+.ktab td { text-align: right; padding: 2px 0 2px 6px; }
+.ktab td:first-child, .ktab th:first-child { padding-left: 0; text-align: left; }
+.toggles { display: grid; gap: 2px; }
+.toggles label { display: grid; grid-template-columns: 18px 30px 1fr; gap: 8px; align-items: center; padding: 3px 0; cursor: pointer; }
+.toggles input { margin: 0; width: 16px; height: 16px; accent-color: var(--ink); }
+.toggles svg { display: block; }
+.code { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: start; }
+.code + .code { margin-top: 8px; }
+code { font: 400 12.5px/1.45 var(--code); }
+.code code { display: block; background: var(--tint); border-radius: 6px; padding: 7px 9px; overflow-wrap: break-word; white-space: pre-wrap; }
+.copy { font-size: 12.5px; min-height: 30px; padding: 6px 8px; }
+.codehead { color: var(--muted); font-size: 12.5px; margin: 0 0 3px; }
+.scrollbox { overflow-x: auto; border: 1px solid var(--rule); border-radius: 7px; background: var(--plot); }
+/* Linha dos dados: ruído, conjunto de teste e f verdadeira */
+.datarow { display: flex; flex-wrap: wrap; gap: 4px 18px; align-items: center; }
+.datarow .ctl { flex: 1 1 220px; max-width: 400px; }
+.chk { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; white-space: nowrap; min-height: 30px; }
+.chk input { margin: 0; width: 16px; height: 16px; accent-color: var(--ink); }
+.chk svg { display: block; flex: none; }
+.chk.off { opacity: .55; cursor: default; }
+#layer-test { pointer-events: none; }
+.tpt circle { fill: var(--plot); stroke: var(--pt); stroke-width: 2.4; }
+.tpt circle.out { fill: none; stroke: var(--ink); stroke-width: 1.2; stroke-dasharray: 2.5 2.5; }
+/* Legenda da escala de cores (duas variáveis) */
+.legend svg { display: block; width: 100%; height: auto; }
+.legend text { fill: var(--muted); font: 400 12px var(--ui); font-variant-numeric: tabular-nums; }
+/* Diagrama da árvore e realce de regiões (árvore, floresta, boosting) */
+.tn rect { fill: var(--tint); stroke: var(--rule); stroke-width: 1; }
+.tn text { fill: var(--ink); font: 400 11px var(--ui); font-variant-numeric: tabular-nums; text-anchor: middle; }
+.tn text.sm { fill: var(--muted); font-size: 10px; }
+.tn.on rect { stroke: var(--ink); stroke-width: 2.2; }
+.te { stroke: var(--muted); stroke-width: 1.3; fill: none; }
+.te.on { stroke: var(--ink); stroke-width: 2.4; }
+.tn { cursor: pointer; }
+.tn:focus { outline: none; }
+.tn.hov rect, .tn:focus-visible rect { stroke: var(--ink); stroke-width: 2.8; }
+.veil { fill: var(--paper); opacity: .66; fill-rule: evenodd; pointer-events: none; }
+.nodebox { fill: none; stroke: var(--ink); stroke-width: 2.6; pointer-events: none; }
+.leafhl { fill: var(--ink); fill-opacity: .1; stroke: var(--ink); stroke-width: 1.6; stroke-dasharray: 6 4; pointer-events: none; }
+.thin { fill: none; stroke: var(--muted); stroke-width: 1; opacity: .45; }
+.part2 { stroke: var(--ink); stroke-width: 1.6; opacity: .8; }
+/* Gráficos pequenos do painel (RSS, caminhos, MSE): o SVG ocupa a largura da coluna */
+.mini { position: relative; }
+.mini svg { display: block; width: 100%; height: auto; touch-action: none; }
+.mini text { fill: var(--muted); font: 400 11.5px var(--ui); font-variant-numeric: tabular-nums; }
+.mini text.ax-l { fill: var(--ink); font: italic 400 14px var(--math); }
+.mini .ax { stroke: var(--rule); stroke-width: 1; fill: none; }
+.mini .ln { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.mini:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.coef { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: 13px; }
+.coef th { font: 500 12px/1.2 var(--ui); color: var(--muted); text-align: right; padding: 0 0 3px 5px; }
+.coef td { text-align: right; padding: 2px 0 2px 5px; white-space: nowrap; }
+.coef th:first-child, .coef td:first-child { text-align: left; padding-left: 0; }
+/* Desempates: bloco recolhido no painel */
+details.ties summary { cursor: pointer; font: 500 11.5px/1.2 var(--ui); letter-spacing: .07em; text-transform: uppercase; color: var(--muted); padding: 4px 0; }
+details.ties summary:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+.ties dl { margin: 6px 0 0; font-size: 13.5px; line-height: 1.4; }
+.ties dt { font-weight: 600; margin-top: 6px; }
+.ties dd { margin: 2px 0 0; }
+/* Gráfico 3D (duas variáveis), abaixo do mapa e com a mesma largura */
+.s3d { margin: 10px auto 0; max-width: 100%; width: max(min(100%, 360px), min(100%, calc((100dvh - 325px) * 0.9586))); }
+.s3d .head-row { align-items: center; margin-bottom: 4px; }
+.s3d .lab { margin: 0; }
+#cv3d { display: block; width: 100%; aspect-ratio: 602 / 480; background: var(--plot); border: 1px solid var(--rule); border-radius: 7px; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+#cv3d.dragging { cursor: grabbing; }
+#cv3d:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+/* Viés² e variância: aviso de cálculo em andamento */
+.bvwait { fill: var(--muted); font: 400 12.5px var(--ui); }
+@media (max-width: 900px) {
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "main" "side"; }
+  .plotwrap, .s3d { width: 100%; }
+}
+@media (max-width: 480px) {
+  .seg button { padding: 9px 9px; font-size: 13px; }
+  .acts button, .acts select { font-size: 13px; padding: 9px 10px; }
+  .say { font-size: 14px; }
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+  <header>
+    <h1>Bagging e floresta aleatória</h1>
+    <p>Arraste os pontos e veja a média de muitas árvores (ou retas) ajustadas a amostras bootstrap.</p>
+  </header>
+
+  <main>
+    <div class="bar">
+      <div class="left">
+        <div class="seg" role="group" aria-label="Número de variáveis preditoras" id="vseg">
+          <button data-mode="1" aria-pressed="true">1 variável</button>
+          <button data-mode="2" aria-pressed="false">2 variáveis</button>
+        </div>
+        <div class="seg" role="group" aria-label="Ferramenta" id="tools">
+          <button id="t-move" data-tool="move" aria-pressed="true">Mover</button>
+          <button id="t-yedit" data-tool="yedit" aria-pressed="false" hidden>Mudar <span class="math"><i>y</i></span></button>
+          <button id="t-add" data-tool="add" aria-pressed="false">Adicionar</button>
+          <button id="t-rem" data-tool="remove" aria-pressed="false">Remover</button>
+        </div>
+      </div>
+      <div class="acts">
+        <select id="dataset" aria-label="Conjunto de dados"></select>
+        <button id="reset">Restaurar dados</button>
+      </div>
+    </div>
+    <div class="datarow">
+      <div class="ctl"><label class="word" for="p-noise-n">Ruído <span class="math"><i>σ</i></span></label><input id="p-noise-n" type="number" min="0" max="1" step="0.05" inputmode="decimal"><input id="p-noise" type="range" min="0" max="1" step="0.05" aria-label="Desvio-padrão sigma do erro"></div>
+      <label class="chk" for="o-test" id="c-test"><input type="checkbox" id="o-test"><svg width="14" height="14" aria-hidden="true"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="2"></circle></svg>Conjunto de teste</label>
+      <label class="chk" for="o-truef" id="c-truef"><input type="checkbox" id="o-truef"><svg width="26" height="14" aria-hidden="true"><line x1="0" y1="7" x2="26" y2="7" stroke="var(--orange)" stroke-width="2.4" stroke-dasharray="7 4"></line></svg><span><i class="math">f</i> verdadeira</span></label>
+      <label class="chk" for="o-var" id="c-var"><input type="checkbox" id="o-var"><svg width="26" height="14" aria-hidden="true"><path d="M0 10 C8 2 16 12 26 4 M0 6 C8 12 18 2 26 9" fill="none" stroke="currentColor" stroke-width="1" opacity=".6"></path><path d="M0 8 C8 6 18 6 26 7" fill="none" stroke="var(--pt)" stroke-width="2.4" stroke-dasharray="1 4"></path></svg>Variabilidade</label>
+    </div>
+
+    <div class="params">
+      <div class="seg" role="group" aria-label="Modelo de base" id="baseseg">
+        <button data-base="tree" aria-pressed="true">Árvores</button>
+        <button data-base="linear" aria-pressed="false">Regressão linear</button>
+      </div>
+      <div class="ctl wide"><label for="p-b-n">B</label><input id="p-b-n" type="number" min="1" max="500" step="1" inputmode="numeric"><input id="p-b" type="range" min="1" max="500" step="1" aria-label="Número de amostras bootstrap B"></div>
+      <div class="seg" role="group" aria-label="Atributos sorteados por divisão, m" id="mseg">
+        <button data-m="1" aria-pressed="true"><span class="math"><i>m</i> = 1</span></button>
+        <button data-m="2" aria-pressed="false"><span><span class="math"><i>m</i> = 2 = <i>p</i></span> (bagging)</span></button>
+      </div>
+      <div class="ctl wide c-tree"><label class="word" for="p-depth-n">Profundidade máx.</label><input id="p-depth-n" type="number" min="1" max="30" step="1" placeholder="sem" aria-label="Profundidade máxima (vazio: sem limite)"><input id="p-depth" type="range" min="1" max="13" step="1" aria-label="Profundidade máxima; o último valor é sem limite"></div>
+      <div class="ctl wide c-tree"><label class="word" for="p-leaf-n">Mínimo por folha</label><input id="p-leaf-n" type="number" min="1" max="20" step="1"><input id="p-leaf" type="range" min="1" max="20" step="1" aria-label="Mínimo de pontos por folha"></div>
+      <button id="reseed">Sortear de novo</button></div>
+
+    <div id="say" class="say" role="status" aria-live="polite"></div>
+
+    <div class="plotwrap">
+      <canvas id="cv" aria-hidden="true"></canvas>
+      <svg id="plot" viewBox="0 0 602 628" data-tool="move" data-mode="1" aria-label="Gráfico dos dados com o ajuste da regressão. Os pontos podem ser arrastados.">
+        <defs><clipPath id="clip"><rect id="cliprect"></rect></clipPath></defs>
+        <g clip-path="url(#clip)">
+          <g id="layer-extra"></g>
+          <path id="resid" class="resid"></path>
+          <path id="varp" class="curve varc"></path>
+          <path id="varm" class="curve varm"></path>
+          <path id="truef" class="curve truef"></path>
+          <path id="ghost" class="curve ghost"></path>
+          <path id="hyper" class="curve hyper"></path>
+          <path id="highlight" class="curve hl"></path>
+          <circle id="probe-c" class="probe" style="display:none"></circle>
+          <path id="probe-p" class="probe" style="display:none"></path>
+          <circle id="probe-m" class="probem" r="6" style="display:none"></circle>
+        </g>
+        <rect class="frame" id="frame"></rect>
+        <g id="axes"></g>
+        <g id="layer-test"></g>
+        <g id="layer-points"></g>
+      </svg>
+    </div>
+    <section class="s3d" id="s-3d" hidden>
+      <div class="head-row">
+        <p class="lab" id="v3d-lab">Superfície ajustada em 3D</p>
+        <button class="copy" id="v3d-reset">Vista inicial</button>
+      </div>
+      <canvas id="cv3d" tabindex="0" role="img" aria-label="Superfície ajustada em três dimensões. Use as setas para girar."></canvas>
+      <p class="note" id="v3d-note"></p>
+    </section>
+  </main>
+
+  <aside>
+    <section>
+      <p class="lab">Modelo ajustado</p>
+      <div class="head-row">
+        <div class="bigM" id="v-title" style="font-size:1.25rem"></div>
+        <span id="pill" class="pill"></span>
+      </div>
+      <div id="v-data"></div>
+    </section>
+    <section class="legend" id="s-legend" hidden>
+      <p class="lab">Cores: valores de <span class="math"><i>y</i></span> e de <span class="math"><i>ŷ</i></span></p>
+      <div id="v-legend"></div>
+      <p class="note">O fundo mostra <span class="math"><i>ŷ</i></span> em faixas de 0,5; cada ponto tem a cor do seu <span class="math"><i>y</i></span>. Um ponto da mesma cor do fundo está bem ajustado.</p>
+    </section>
+    <section id="s-bv" hidden>
+      <p class="lab">Viés e variância, como na Fig. 2.12</p>
+      <div id="v-bv" class="mini" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-label="Viés ao quadrado, variância e MSE de teste esperado contra o parâmetro. Clique ou use as setas para escolher o valor."></div>
+      <p class="note" id="v-bvnote"></p>
+    </section>
+    <section>
+      <p class="lab" id="v-rulelab">Erro fora da amostra (OOB)</p>
+      <div class="bigM" id="v-oob" style="font-size:1.25rem"></div>
+      <p class="note" id="v-oobnote"></p>
+    </section>
+    <section>
+      <p class="lab">Como funciona</p>
+      <p class="eq"><i>f̂</i><sub>bag</sub>(<i>x</i>) = (1/<i>B</i>) Σ<sub><i>b</i>=1</sub><sup><i>B</i></sup> <i>f̂</i><sup>*<i>b</i></sup>(<i>x</i>)</p>
+      <p class="note" id="v-rulenote"></p>
+    </section>
+
+    <section>
+      <p class="lab">Exibir</p>
+      <div class="toggles">
+        <label for="o-fit"><input type="checkbox" id="o-fit" data-show="fit" checked>
+          <svg width="30" height="14" aria-hidden="true"><path d="M1 11 L10 11 L10 5 L20 5 L20 8 L29 8" fill="none" stroke="var(--ink)" stroke-width="2.4"></path></svg><span>Média <span class="math"><i>f̂</i><sub>bag</sub></span></span></label>
+        <label for="o-each" id="c-each"><input type="checkbox" id="o-each" data-show="each" checked>
+          <svg width="30" height="14" aria-hidden="true"><path d="M1 12 L12 12 L12 4 L29 4 M1 9 L18 9 L18 6 L29 6" fill="none" stroke="var(--muted)" stroke-width="1.2"></path></svg><span>Ajustes de cada amostra (até 30; uma variável)</span></label>
+        <label for="o-resid" id="c-resid"><input type="checkbox" id="o-resid" data-show="resid">
+          <svg width="30" height="14" aria-hidden="true"><line x1="8" y1="2" x2="8" y2="12" stroke="var(--muted)" stroke-width="1.8"></line><line x1="20" y1="4" x2="20" y2="11" stroke="var(--muted)" stroke-width="1.8"></line></svg><span>Resíduos</span></label>
+      </div>
+    </section>
+
+    <section>
+      <details class="ties">
+        <summary>Diferenças entre implementações</summary>
+        <dl>
+          <dt>Este app</dt>
+          <dd>Cada amostra bootstrap tem semente própria, para o arraste não sortear tudo de novo; "Sortear de novo" troca as sementes. Na árvore única, X<sub>1</sub> antes de X<sub>2</sub> nos empates; na floresta, a ordem dos atributos é sorteada em cada nó.</dd>
+          <dt>scikit-learn</dt>
+          <dd>Outro gerador de números aleatórios: as amostras bootstrap são outras, e o resultado só coincide em distribuição. Com <i>m</i> = <i>p</i>, <code>RandomForestRegressor</code> é o bagging de árvores.</dd>
+          <dt>R, <code>randomForest</code></dt>
+          <dd><code>nodesize</code> não é o mínimo por folha (só impede dividir nós com até <code>nodesize</code> pontos), e não há profundidade máxima (só <code>maxnodes</code>).</dd>
+        </dl>
+      </details>
+    </section>
+
+    <section>
+      <p class="lab">Mesmo modelo em código</p>
+      <p class="codehead" id="v-rhead">R</p>
+      <div class="code"><code id="code-r"></code><button class="copy" id="copy-r">Copiar</button></div>
+      <p class="codehead" style="margin-top:8px" id="v-pyhead">Python, com scikit-learn</p>
+      <div class="code"><code id="code-py"></code><button class="copy" id="copy-py">Copiar</button></div>
+    </section>
+  </aside>
+</div>
+
+<script>
+/*SOLVER-START*/
+const Solver = (() => {
+  // NÚCLEO-ÁRVORE-INÍCIO (igual em arvore.html, floresta.html e boosting.html; o testes/t_casca.py confere)
+  // Árvore de regressão como o DecisionTreeRegressor do scikit-learn, critério "squared_error":
+  // divisão binária recursiva que mais reduz o RSS, Eqs. (8.1)–(8.3); folha prevê a média dos y dela.
+  const EPS = 2.220446049250313e-16, FEATURE_THRESHOLD = 1e-7;
+  // O scikit-learn guarda X em float32; para coincidir nos limiares e nas comparações, o mesmo aqui.
+  const f32 = X => X.map(r => r.map(Math.fround));
+  // Para cada atributo, os índices em ordem crescente (empates pela ordem dos dados)
+  const presort = Xf => Array.from({ length: Xf[0].length }, (_, f) => Array.from(Xf.keys()).sort((a, b) => Xf[a][f] - Xf[b][f] || a - b));
+  // opts: w (pesos inteiros do bootstrap ou null), maxDepth (null = sem limite), minLeaf, maxLeaves (cresce pelo melhor primeiro),
+  //       maxFeatures (atributos sorteados por nó), rand (gerador, para sortear a ordem dos atributos)
+  function grow(Xf, y, opts, S) {
+    const n = Xf.length, p = Xf[0].length, w = opts.w || null, minLeaf = opts.minLeaf || 1;
+    const maxDepth = opts.maxDepth == null ? Infinity : opts.maxDepth, maxLeaves = opts.maxLeaves || 0;
+    const maxFeatures = Math.min(opts.maxFeatures || p, p), rand = opts.rand || null;
+    S = S || presort(Xf);
+    const tag = new Int32Array(n).fill(-1), all = [], ORD = new Int32Array(n); // ORD: os índices do nó em ordem, reaproveitado
+    let W = 0, serial = 0;
+    for (let i = 0; i < n; i++) { const wi = w ? w[i] : 1; if (wi > 0) { all.push(i); W += wi; } }
+    const sums = idx => { let wt = 0, s = 0, sq = 0; for (const i of idx) { const wi = w ? w[i] : 1, v = y[i]; wt += wi; s += wi*v; sq += wi*v*v; } return { wt, s, sq }; };
+    function evalNode(idx, depth) {
+      const { wt, s, sq } = sums(idx), mean = s/wt, imp = sq/wt - mean*mean;
+      const nd = { id: -1, f: -1, t: 0, l: -1, r: -1, n: idx.length, w: wt, imp, v: mean, depth, idx, gain: 0, leaf: false };
+      let leaf = depth >= maxDepth || idx.length < 2 || idx.length < 2*minLeaf || imp <= EPS, best = null;
+      if (!leaf) {
+        const me = serial++, m = idx.length, ord = ORD;
+        for (const i of idx) tag[i] = me;
+        // Ordem dos atributos: X₁ antes de X₂ na árvore única; sorteada quando há gerador (floresta)
+        const order = Array.from({ length: p }, (_, f) => f);
+        if (rand) for (let k = p - 1; k > 0; k--) { const j = Math.floor(rand()*(k + 1)); const t = order[k]; order[k] = order[j]; order[j] = t; }
+        let visited = 0, bestProxy = -Infinity;
+        for (const f of order) {
+          if (visited >= maxFeatures) break;
+          let k = 0;
+          for (const i of S[f]) if (tag[i] === me) ord[k++] = i;
+          if (Xf[ord[m - 1]][f] <= Xf[ord[0]][f] + FEATURE_THRESHOLD) continue; // atributo constante no nó não conta
+          visited++;
+          let wl = 0, sl = 0;
+          for (let q = 0; q < m - 1; q++) {
+            const i = ord[q], wi = w ? w[i] : 1;
+            wl += wi; sl += wi*y[i];
+            const v0 = Xf[i][f], v1 = Xf[ord[q + 1]][f];
+            if (v1 <= v0 + FEATURE_THRESHOLD) continue;
+            if (q + 1 < minLeaf || m - q - 1 < minLeaf) continue;
+            // Mesma comparação do scikit-learn: Σ²/w de cada lado (maximizar isso é minimizar o RSS da Eq. (8.3))
+            const wr = wt - wl, sr = s - sl, proxy = sl*sl/wl + sr*sr/wr;
+            if (proxy > bestProxy) { bestProxy = proxy; let th = v0/2 + v1/2; if (th === v1 || !Number.isFinite(th)) th = v0; best = { f, t: th }; }
+          }
+        }
+        if (!best) leaf = true;
+        else {
+          const L = sums(idx.filter(i => Xf[i][best.f] <= best.t)), wr = wt - L.wt;
+          const il = L.sq/L.wt - (L.s/L.wt)**2, ir = (sq - L.sq)/wr - ((s - L.s)/wr)**2;
+          const dec = (wt/W)*(imp - (wr/wt)*ir - (L.wt/wt)*il);
+          if (dec + EPS < 0) leaf = true; else { nd.f = best.f; nd.t = best.t; nd.gain = dec; }
+        }
+      }
+      nd.leaf = leaf;
+      return nd;
+    }
+    const nodes = [], kids = nd => [nd.idx.filter(i => Xf[i][nd.f] <= nd.t), nd.idx.filter(i => Xf[i][nd.f] > nd.t)];
+    if (!all.length) return { nodes: [{ id: 0, f: -1, t: 0, l: -1, r: -1, n: 0, w: 0, imp: 0, v: 0, depth: 0 }], W: 0, p };
+    if (!maxLeaves) {
+      // Em profundidade (o padrão do scikit-learn): pré-ordem, esquerda primeiro
+      (function build(idx, depth) {
+        const nd = evalNode(idx, depth);
+        nd.id = nodes.length; nodes.push(nd);
+        if (nd.leaf) return nd.id;
+        const [a, b] = kids(nd);
+        nd.l = build(a, depth + 1); nd.r = build(b, depth + 1);
+        return nd.id;
+      })(all, 0);
+    } else {
+      // Com limite de folhas, o scikit-learn cresce pelo melhor primeiro: divide sempre o nó de maior ganho
+      const root = evalNode(all, 0), frontier = [root];
+      let splits = maxLeaves - 1;
+      while (frontier.length) {
+        let b = 0;
+        for (let i = 1; i < frontier.length; i++) if (frontier[i].gain > frontier[b].gain) b = i;
+        const nd = frontier.splice(b, 1)[0];
+        if (nd.leaf || splits <= 0) { nd.leaf = true; continue; }
+        splits--;
+        const [a, c] = kids(nd);
+        nd.lc = evalNode(a, nd.depth + 1); nd.rc = evalNode(c, nd.depth + 1);
+        frontier.push(nd.lc, nd.rc);
+      }
+      (function flat(nd) {
+        nd.id = nodes.length; nodes.push(nd);
+        if (nd.leaf) return nd.id;
+        nd.l = flat(nd.lc); nd.r = flat(nd.rc);
+        delete nd.lc; delete nd.rc;
+        return nd.id;
+      })(root);
+    }
+    for (const nd of nodes) { delete nd.idx; if (nd.leaf) { nd.f = -1; nd.l = nd.r = -1; } delete nd.leaf; delete nd.gain; }
+    return { nodes, W, p };
+  }
+  // Poda por custo-complexidade (elo mais fraco), como o ccp_alpha do scikit-learn: o custo de cada nó é imp·w/W = RSS do nó/n.
+  function prune(tree, alpha) {
+    if (!(alpha > 0)) return tree;
+    const N = tree.nodes, n = N.length, W = tree.W, parent = new Int32Array(n).fill(-1), rNode = new Float64Array(n), rBranch = new Float64Array(n), leaves = new Int32Array(n), cand = new Uint8Array(n), inTree = new Uint8Array(n).fill(1);
+    for (let i = 0; i < n; i++) { rNode[i] = N[i].imp*N[i].w/W; if (N[i].l >= 0) { parent[N[i].l] = i; parent[N[i].r] = i; } }
+    for (let i = n - 1; i >= 0; i--) {
+      if (N[i].l < 0) { rBranch[i] = rNode[i]; leaves[i] = 1; }
+      else { cand[i] = 1; rBranch[i] = rBranch[N[i].l] + rBranch[N[i].r]; leaves[i] = leaves[N[i].l] + leaves[N[i].r]; }
+    }
+    const isLeaf = new Uint8Array(n);
+    for (let i = 0; i < n; i++) isLeaf[i] = N[i].l < 0 ? 1 : 0;
+    while (cand[0]) {
+      let best = Infinity, bi = -1;
+      for (let i = 0; i < n; i++) if (cand[i] && inTree[i]) { const a = (rNode[i] - rBranch[i])/(leaves[i] - 1); if (a < best) { best = a; bi = i; } }
+      if (best > alpha) break;
+      const st = [N[bi].l, N[bi].r];
+      while (st.length) { const v = st.pop(); inTree[v] = 0; cand[v] = 0; if (N[v].l >= 0) st.push(N[v].l, N[v].r); }
+      const dr = rBranch[bi] - rNode[bi], dl = leaves[bi] - 1;
+      cand[bi] = 0; isLeaf[bi] = 1; leaves[bi] = 1; rBranch[bi] = rNode[bi];
+      for (let a = parent[bi]; a >= 0; a = parent[a]) { rBranch[a] -= dr; leaves[a] -= dl; }
+    }
+    const out = [];
+    (function rec(i, depth) {
+      const nd = Object.assign({}, N[i], { id: out.length, depth });
+      out.push(nd);
+      if (isLeaf[i]) { nd.f = -1; nd.l = -1; nd.r = -1; return nd.id; }
+      nd.l = rec(N[i].l, depth + 1); nd.r = rec(N[i].r, depth + 1);
+      return nd.id;
+    })(0, 0);
+    return { nodes: out, W, p: tree.p };
+  }
+  function leafOf(tree, a, b) {
+    const N = tree.nodes, fa = Math.fround(a), fb = Math.fround(b);
+    let nd = N[0];
+    while (nd.l >= 0) nd = N[(nd.f === 0 ? fa : fb) <= nd.t ? nd.l : nd.r];
+    return nd;
+  }
+  const predictTree = (tree, a, b) => leafOf(tree, a, b).v;
+  // Soma Σ cₜ·árvoreₜ exata: cada árvore é constante por intervalos (ou retângulos), então a soma é constante numa grade produto
+  // dos limiares de todas as árvores. Cada árvore pinta as próprias folhas num arranjo de diferenças; somas acumuladas dão os valores.
+  function regions(trees, coef, p) {
+    const X = new Set(), Y = new Set();
+    for (const t of trees) for (const nd of t.nodes) if (nd.l >= 0) (nd.f === 0 ? X : Y).add(nd.t);
+    const xs = Float64Array.from(X).sort(), ys = p > 1 ? Float64Array.from(Y).sort() : new Float64Array(0), nx = xs.length + 1, ny = ys.length + 1;
+    const Wd = nx + 1, D = new Float64Array(Wd*(ny + 1));
+    const find = (a, v) => { let lo = 0, hi = a.length - 1; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < v) lo = m + 1; else hi = m; } return lo; };
+    trees.forEach((t, k) => {
+      const c = typeof coef === 'number' ? coef : coef[k];
+      (function paint(i, x0, x1, y0, y1) {
+        if (x0 >= x1 || y0 >= y1) return;
+        const nd = t.nodes[i];
+        if (nd.l < 0) { const v = c*nd.v; D[y0*Wd + x0] += v; D[y0*Wd + x1] -= v; D[y1*Wd + x0] -= v; D[y1*Wd + x1] += v; return; }
+        if (nd.f === 0) { const q = find(xs, nd.t) + 1; paint(nd.l, x0, Math.min(x1, q), y0, y1); paint(nd.r, Math.max(x0, q), x1, y0, y1); }
+        else { const q = find(ys, nd.t) + 1; paint(nd.l, x0, x1, y0, Math.min(y1, q)); paint(nd.r, x0, x1, Math.max(y0, q), y1); }
+      })(0, 0, nx, 0, ny);
+    });
+    for (let j = 0; j <= ny; j++) for (let i = 1; i <= nx; i++) D[j*Wd + i] += D[j*Wd + i - 1];
+    for (let j = 1; j <= ny; j++) for (let i = 0; i <= nx; i++) D[j*Wd + i] += D[(j - 1)*Wd + i];
+    const val = new Float64Array(nx*ny);
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) val[j*nx + i] = D[j*Wd + i];
+    return { xs, ys, nx, ny, val };
+  }
+  // Célula de um valor: "≤ limiar" vai para a esquerda, como nas árvores
+  function cellIndex(a, v0) { const v = Math.fround(v0); let lo = 0, hi = a.length; while (lo < hi) { const m = (lo + hi) >> 1; if (a[m] < v) lo = m + 1; else hi = m; } return lo; }
+  const lookup = (R, a, b) => R.val[(R.ny > 1 ? cellIndex(R.ys, b) : 0)*R.nx + cellIndex(R.xs, a)];
+  // Gerador com semente (mulberry32), para o bootstrap e a ordem dos atributos em cada árvore
+  function mulberry(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0)/4294967296; }; }
+  // NÚCLEO-ÁRVORE-FIM
+  // Pesos do bootstrap: n sorteios com reposição; o gerador da árvore t também sorteia a ordem dos atributos
+  function bootstrap(n, seed, t) {
+    const r = mulberry(Math.imul(seed + 1, 2654435761) ^ Math.imul(t + 1, 0x9E3779B1)), w = new Array(n).fill(0);
+    for (let i = 0; i < n; i++) w[Math.floor(r()*n)]++;
+    return { w, r };
+  }
+  // Mínimos quadrados ponderados pelos pesos do bootstrap; se XᵀX for singular, a solução de menor norma (como o LinearRegression)
+  function wls(X, y, w) {
+    const n = X.length, p = X[0].length, mx = new Array(p).fill(0);
+    let W = 0, my = 0;
+    for (let i = 0; i < n; i++) { W += w[i]; my += w[i]*y[i]; for (let j = 0; j < p; j++) mx[j] += w[i]*X[i][j]; }
+    my /= W; for (let j = 0; j < p; j++) mx[j] /= W;
+    const G = Array.from({ length: p }, () => new Array(p).fill(0)), c = new Array(p).fill(0);
+    for (let i = 0; i < n; i++) if (w[i]) for (let j = 0; j < p; j++) { const a = X[i][j] - mx[j]; c[j] += w[i]*a*(y[i] - my); for (let k = 0; k < p; k++) G[j][k] += w[i]*a*(X[i][k] - mx[k]); }
+    let b;
+    const sc = G.reduce((s, r, j) => s + Math.abs(r[j]), 0) || 1;
+    if (p === 1) b = [G[0][0] > 1e-12*sc ? c[0]/G[0][0] : 0];
+    else {
+      // Autovalores e autovetores da matriz 2×2 simétrica: pseudoinversa
+      const a = G[0][0], d = G[1][1], o = G[0][1], tr = (a + d)/2, dif = Math.sqrt(((a - d)/2)**2 + o*o), l1 = tr + dif, l2 = tr - dif;
+      const v1 = Math.abs(o) > 1e-300 ? [l1 - d, o] : a >= d ? [1, 0] : [0, 1], nv = Math.hypot(v1[0], v1[1]), u1 = [v1[0]/nv, v1[1]/nv], u2 = [-u1[1], u1[0]];
+      b = [0, 0];
+      for (const [l, u] of [[l1, u1], [l2, u2]]) if (l > 1e-12*sc) { const k = (u[0]*c[0] + u[1]*c[1])/l; b[0] += k*u[0]; b[1] += k*u[1]; }
+    }
+    let b0 = my; for (let j = 0; j < p; j++) b0 -= mx[j]*b[j];
+    return [b0, ...b];
+  }
+  function fit(X, y, opts) {
+    const n = X.length, p = X[0].length, B = opts.B, Xf = f32(X), S = presort(Xf), models = [], ws = [];
+    for (let t = 0; t < B; t++) {
+      const { w, r } = bootstrap(n, opts.seed, t);
+      ws.push(w);
+      if (opts.base === 'linear') models.push(wls(X, y, w));
+      else models.push(grow(Xf, y, { w, maxDepth: opts.maxDepth, minLeaf: opts.minLeaf, maxFeatures: opts.m, rand: r }, S));
+    }
+    return { models, ws, B, p, base: opts.base };
+  }
+  const predictOne = (F, k, a, b) => F.base === 'linear' ? F.models[k][0] + F.models[k][1]*a + (F.p > 1 ? F.models[k][2]*b : 0) : predictTree(F.models[k], a, b);
+  // OOB (seção 8.2.1): cada ponto é previsto só pelas árvores que não o usaram
+  function oob(F, X, y) {
+    let s = 0, cov = 0;
+    const pred = X.map((x, i) => {
+      let t = 0, k = 0;
+      for (let b = 0; b < F.B; b++) if (F.ws[b][i] === 0) { t += predictOne(F, b, x[0], x[1]); k++; }
+      if (!k) return null;
+      const v = t/k; s += (y[i] - v)**2; cov++;
+      return v;
+    });
+    return { pred, mse: cov ? s/cov : NaN, covered: cov };
+  }
+  return { f32, presort, grow, leafOf, predictTree, regions, cellIndex, lookup, bootstrap, wls, fit, predictOne, oob };
+})();
+/*SOLVER-END*/
+
+
+function bindNum(api, rangeId, numId, key, lo, hi, opts = {}) {
+  const { $, state } = api, parse = v => parseFloat(String(v).replace(',', '.'));
+  const apply = v => { state.P[key] = v; state.flash = ''; if (opts.on) opts.on(v); api.render(); };
+  $(rangeId).addEventListener('input', e => apply(opts.fromR ? opts.fromR(Number(e.target.value)) : Number(e.target.value)));
+  $(numId).addEventListener('input', e => { const v = parse(e.target.value); if (Number.isFinite(v) && v >= lo && v <= hi && (!opts.int || Number.isInteger(v))) apply(v); });
+  $(numId).addEventListener('blur', () => { $(numId).value = opts.show ? opts.show(state.P[key]) : state.P[key]; });
+}
+function syncNum(api, rangeId, numId, val, shown) {
+  const { $ } = api;
+  if (document.activeElement !== $(numId)) $(numId).value = shown === undefined ? val : shown;
+  if (document.activeElement !== $(rangeId)) $(rangeId).value = val;
+}
+
+const App = {
+  datasets: { 1: 'seno', 2: 'chapeu' }, params: { base: 'tree', B: 100, m: 1, maxDepth: null, minLeaf: 1, seed: 0 },
+  steps3d: m => !!m.R, // degraus com árvores; com regressão linear como base, a média é um plano
+  // Viés² e variância contra o número de árvores B (escala log). Cada árvore tem semente própria, então as b primeiras
+  // de uma floresta com 500 são a floresta com B = b: basta uma floresta por amostra, com médias parciais.
+  biasVar: {
+    key: 'B', name: '<i>B</i>', axis: 'B (escala log)', right: 'mais árvores na média: a variância cai e o viés não muda',
+    values: () => [1, 2, 3, 5, 10, 20, 30, 50, 100, 200, 300, 500],
+    pos: B => Math.log10(B),
+    ticks: () => [[1, '1'], [10, '10'], [100, '100'], [500, '500']],
+    text: B => `<i>B</i> = ${B}`,
+    cur: P => P.B,
+    set: (api, B) => { api.state.P.B = B; },
+    fits(D, P, Bs) {
+      const Bmax = Math.max(...Bs), F = Solver.fit(D.X, Array.from(D.y), { B: Bmax, seed: P.seed, base: P.base, maxDepth: P.maxDepth, minLeaf: P.minLeaf, m: D.p === 1 ? 1 : Math.min(P.m, D.p) });
+      // Previsões das Bmax árvores no último ponto pedido, acumuladas: cada B só soma as B primeiras
+      let la = NaN, lb = NaN;
+      const acc = new Float64Array(Bmax + 1);
+      const at = (a, b) => {
+        if (a !== la || b !== lb) { la = a; lb = b; for (let k = 0; k < Bmax; k++) acc[k + 1] = acc[k] + Solver.predictOne(F, k, a, b); }
+        return acc;
+      };
+      return Bs.map(B => (a, b) => at(a, b)[B]/B);
+    },
+  },
+  init(api) {
+    const { $, state } = api;
+    const seg = (id, key, conv, after) => { const bs = [...document.querySelectorAll(`#${id} button`)]; bs.forEach(b => b.addEventListener('click', () => { state.P[key] = conv(b.dataset[key]); bs.forEach(o => o.setAttribute('aria-pressed', String(o === b))); state.flash = ''; if (after) after(); api.render(); })); };
+    seg('baseseg', 'base', String, () => App.modeChanged(api));
+    seg('mseg', 'm', Number);
+    bindNum(api, 'p-b', 'p-b-n', 'B', 1, 500, { int: true });
+    $('p-depth').addEventListener('input', e => { const v = Number(e.target.value); state.P.maxDepth = v > 12 ? null : v; state.flash = ''; api.render(); });
+    $('p-depth-n').addEventListener('input', e => { const v = parseInt(e.target.value, 10); if (e.target.value === '') { state.P.maxDepth = null; api.render(); } else if (Number.isInteger(v) && v >= 1 && v <= 30) { state.P.maxDepth = v; state.flash = ''; api.render(); } });
+    bindNum(api, 'p-leaf', 'p-leaf-n', 'minLeaf', 1, 20, { int: true });
+    $('reseed').addEventListener('click', () => { state.P.seed = (state.P.seed + 1) % 100000; state.flash = `Novas amostras bootstrap sorteadas (semente ${state.P.seed}).`; api.render(); });
+    App.modeChanged(api);
+  },
+  modeChanged(api) {
+    const one = api.mode() === 1, tree = api.state.P.base === 'tree';
+    api.$('mseg').hidden = one || !tree;
+    document.querySelectorAll('.c-tree').forEach(e => { e.hidden = !tree; });
+    api.$('c-each').hidden = !one;
+  },
+  fit(D, P) {
+    const m = D.p === 1 ? 1 : Math.min(P.m, D.p), F = Solver.fit(D.X, Array.from(D.y), { B: P.B, seed: P.seed, base: P.base, maxDepth: P.maxDepth, minLeaf: P.minLeaf, m });
+    let f, R = null;
+    if (P.base === 'linear') {
+      // Média de retas (ou planos) é uma reta (ou plano): basta a média dos coeficientes
+      const c = new Array(D.p + 1).fill(0);
+      for (const b of F.models) for (let j = 0; j <= D.p; j++) c[j] += b[j]/F.B;
+      f = D.p === 1 ? (a) => c[0] + c[1]*a : (a, b) => c[0] + c[1]*a + c[2]*b;
+      F.coef = c;
+    } else {
+      R = Solver.regions(F.models, 1/F.B, D.p);
+      f = (a, b) => Solver.lookup(R, a, b);
+    }
+    const O = Solver.oob(F, D.X, D.y);
+    return { ok: true, F, R, f, O, D, m, one: D.p === 1, base: P.base };
+  },
+  breaks: m => m.R && m.one ? Array.from(m.R.xs) : null,
+  grid(m, api, F) {
+    const { NX, NY, HX, HY, X0, Y0 } = api;
+    if (!m.R) { for (let j = 0, q = 0; j < NY; j++) for (let i = 0; i < NX; i++, q++) F[q] = m.f(X0 + i*HX, Y0 + j*HY); return; }
+    const R = m.R;
+    for (let j = 0, q = 0; j < NY; j++) { const jc = R.ny > 1 ? Solver.cellIndex(R.ys, Y0 + j*HY) : 0; for (let i = 0; i < NX; i++, q++) F[q] = R.val[jc*R.nx + Solver.cellIndex(R.xs, X0 + i*HX)]; }
+  },
+  // Duas variáveis: curvas de nível exatas da média, por bisseção na grade de limiares (a média é constante por retângulos)
+  bounds2(m, api) {
+    if (!m.R) return api.levelLines(api.F, m.f, false);
+    return api.levelLines(api.F, m.f, true);
+  },
+  draw(m, api) {
+    const g = api.extra;
+    g.textContent = '';
+    if (!m.ok || !m.one || !api.state.show.each) return;
+    // Ajustes de cada amostra bootstrap (até 30), em cinza fino
+    let d = '';
+    const k = Math.min(30, m.F.B);
+    for (let t = 0; t < k; t++) {
+      if (m.base === 'linear') { const b = m.F.models[t]; d += `M${api.px(api.X0)} ${api.py(b[0] + b[1]*api.X0).toFixed(1)}L${api.px(api.X1)} ${api.py(b[0] + b[1]*api.X1).toFixed(1)}`; }
+      else {
+        // Degraus exatos: a árvore é constante entre limiares consecutivos
+        const R = Solver.regions([m.F.models[t]], 1, 1), e = [api.X0, ...Array.from(R.xs).filter(v => v > api.X0 && v < api.X1), api.X1];
+        for (let k = 0; k < e.length - 1; k++) { const v = api.py(Math.max(api.Y0 - 3, Math.min(api.Y1 + 3, R.val[Solver.cellIndex(R.xs, (e[k] + e[k + 1])/2)]))).toFixed(1); d += `${k ? 'L' : 'M'}${api.px(e[k]).toFixed(1)} ${v}H${api.px(e[k + 1]).toFixed(1)}`; }
+      }
+    }
+    api.el('path', 'thin', g).setAttribute('d', d);
+  },
+  sayPoint(m, i, api) {
+    const v = m.O.pred[i], k = m.F.ws.reduce((s, w) => s + (w[i] === 0 ? 1 : 0), 0);
+    return `${api.pointText(i)} Ficou fora de ${k} das ${m.F.B} amostras bootstrap${v === null ? ', então não tem previsão OOB' : `; a previsão OOB, a média das ${m.base === 'tree' ? 'árvores' : 'retas'} que não o usaram, é <span class="num">${api.num(v)}</span>`}.`;
+  },
+  probe(m, x, y, api) { return `<span class="num">${api.where(x, y)}.</span> <i>f̂</i><sub>bag</sub> = <span class="num">${api.num(m.f(x, y))}</span>, a média de ${m.F.B} ${m.base === 'tree' ? 'árvores' : 'ajustes lineares'}.`; },
+  hint(m, api) {
+    if (m.base === 'linear') return 'Bagging de regressão linear: a média das retas quase não muda a reta de mínimos quadrados. Bagging ajuda métodos de variância alta, como árvores fundas.';
+    if (m.one) return 'Cada árvore em cinza foi ajustada a uma amostra bootstrap e varia muito; a média (em preto) varia menos. Com uma variável, m = p = 1: a floresta é o próprio bagging.';
+    return m.m === 1 ? 'Floresta aleatória: em cada divisão só um atributo sorteado é considerado (m = 1), o que descorrelaciona as árvores. Compare com m = 2, o bagging.' : 'Bagging (m = p = 2): todas as árvores podem usar os dois atributos em cada divisão. Compare com m = 1, a floresta aleatória.';
+  },
+  panel(m, api) {
+    const { $, num, state } = api, P = state.P, n = m.D.n;
+    syncNum(api, 'p-b', 'p-b-n', P.B);
+    syncNum(api, 'p-depth', 'p-depth-n', P.maxDepth == null ? 13 : P.maxDepth, P.maxDepth == null ? '' : P.maxDepth);
+    syncNum(api, 'p-leaf', 'p-leaf-n', P.minLeaf);
+    const nome = m.base === 'linear' ? 'Bagging de regressão linear' : m.one || m.m === m.D.p ? 'Bagging de árvores' : 'Floresta aleatória';
+    $('v-title').innerHTML = `${nome}, <i>B</i> = ${m.F.B}`;
+    $('v-oob').innerHTML = Number.isFinite(m.O.mse) ? `MSE<sub>OOB</sub> = ${num(m.O.mse, 3)}` : 'Sem MSE OOB';
+    const fora = n - m.O.covered;
+    $('v-oobnote').innerHTML = `Em média, cada amostra bootstrap deixa de fora cerca de 1/3 dos pontos (seção 8.2.1). Cada ponto é previsto pela média só dos ajustes que não o usaram, e o MSE dessas previsões estima o erro de teste${state.test.length ? '; compare com o MSE de teste acima' : ''}.${fora ? ` ${fora} ${fora === 1 ? 'ponto não ficou' : 'pontos não ficaram'} fora de nenhuma amostra e não entra${fora === 1 ? '' : 'm'} na conta: aumente <i>B</i>.` : ''}`;
+    $('v-rulenote').innerHTML = (m.base === 'linear'
+      ? 'Para cada uma das <i>B</i> amostras bootstrap (sorteio de <i>n</i> pontos com reposição), uma regressão linear; a previsão é a média delas. Fora do livro, que aplica o bagging a árvores; o notebook do curso usa o <code>BaggingRegressor</code> assim.'
+      : `Para cada uma das <i>B</i> amostras bootstrap (sorteio de <i>n</i> pontos com reposição), uma árvore funda, sem poda, e a previsão é a média delas (seção 8.2.1). Na floresta aleatória (seção 8.2.2), cada divisão considera só <i>m</i> dos <i>p</i> atributos, sorteados de novo a cada divisão; com <i>m</i> = <i>p</i> volta a ser o bagging.${m.one ? ' Com uma variável, <i>p</i> = 1 e não há o que sortear.' : ''}`);
+  },
+  code(m, api) {
+    const P = api.state.P, B = m.F.B;
+    api.$('v-rhead').innerHTML = m.base === 'linear' ? 'R, sem pacotes (<code>dados</code> com <code>y</code> e os atributos)' : 'R, com randomForest (<code>dados</code> com <code>y</code> e os atributos)';
+    api.$('v-pyhead').innerHTML = 'Python, com scikit-learn';
+    if (m.base === 'linear') return {
+      r: `coefs <- replicate(${B}, coef(lm(y ~ ., data = dados[sample(nrow(dados), replace = TRUE), ])))\nrowMeans(coefs)   # outras amostras: coincide em distribuição`,
+      py: `modelo = BaggingRegressor(estimator=LinearRegression(), n_estimators=${B}, bootstrap=True, oob_score=True, random_state=0).fit(X, y)${m.D.n < 15 ? '\n# com n pequeno, oob_score=True pode dar erro: alguma amostra bootstrap fica sem pontos de fora' : ''}`,
+    };
+    return {
+      r: `modelo <- randomForest(y ~ ., data = dados, ntree = ${B}, mtry = ${m.m}, replace = TRUE, nodesize = ${P.minLeaf})${P.maxDepth != null ? '   # sem profundidade máxima no randomForest' : ''}\nmodelo$mse[${B}]   # MSE OOB`,
+      py: `modelo = RandomForestRegressor(n_estimators=${B}, max_features=${m.m}, max_depth=${P.maxDepth == null ? 'None' : P.maxDepth}, min_samples_leaf=${P.minLeaf}, bootstrap=True, oob_score=True, random_state=0).fit(X, y)`,
+    };
+  },
+};
+
+(() => {
+  const X0 = -1.73, X1 = 3.52, Y0 = -1.77, Y1 = 3.75, S = 100, ML = 54, MT = 8;
+  const px = x => ML + (x - X0) * S, py = y => MT + (Y1 - y) * S;
+  const PW = (X1 - X0) * S, PH = (Y1 - Y0) * S;
+  const $ = id => document.getElementById(id);
+  const NS = 'http://www.w3.org/2000/svg';
+  const el = (tag, cls, parent) => { const e = document.createElementNS(NS, tag); if (cls) e.setAttribute('class', cls); if (parent) parent.appendChild(e); return e; };
+  const attrs = (e, o) => { for (const k in o) e.setAttribute(k, o[k]); };
+  const svg = $('plot');
+
+  /* ---------- conjuntos de dados (sementes fixas: sempre os mesmos pontos em aula) ---------- */
+  function rng(seed) {
+    let a = seed >>> 0;
+    const u = () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    return { u, g: () => Math.sqrt(-2*Math.log(1 - u())) * Math.cos(2*Math.PI*u()) };
+  }
+  const CX = (X0+X1)/2, CY = (Y0+Y1)/2;
+  // Escala da resposta com duas variáveis: as cores vão de VLO a VHI, em faixas de VSTEP
+  const VLO = -1.5, VHI = 3.5, VSTEP = 0.5, NB = Math.round((VHI - VLO)/VSTEP);
+  const A = X0 + .25, B = X1 - .25, AY = Y0 + .25, BY = Y1 - .25;
+  // Cada conjunto tem uma f verdadeira e um σ padrão: yᵢ = f(xᵢ) + σ·zᵢ, com zᵢ ~ N(0, 1) fixo por ponto (Eq. (2.1)).
+  // Com uma variável, x é estratificado (um ponto em cada fatia do intervalo); com duas, uniforme no quadrado ou gaussiano correlacionado.
+  const DATA = {
+    1: {
+      reta: { label: 'reta', seed: 11, n: 30, sigma: .5, f: x => .4 + .55*x },
+      curva: { label: 'curva suave (como na Fig. 2.9)', seed: 23, n: 50, sigma: .4, f: x => 1 + .9*Math.sin(1.5*x) + .25*x },
+      quad: { label: 'quadrática (como na Fig. 3.8)', seed: 37, n: 40, sigma: .45, f: x => .2*(x - 2.8)*(x - 2.8) - .9 },
+      seno: { label: 'seno de frequência alta', seed: 53, n: 50, sigma: .35, f: x => 1 + 1.4*Math.sin(2.2*x) },
+      degrau: { label: 'degraus', seed: 71, n: 36, sigma: .35, f: x => x < .2 ? 0 : x < 1.9 ? 2 : .9 },
+      pouco: { label: 'reta com poucos pontos', seed: 83, n: 10, sigma: .5, f: x => .4 + .55*x },
+      influente: { label: 'outlier e ponto de alta alavancagem (como nas Figs. 3.12 e 3.13)', fixed: [[-1.35,-.4],[-1.1,-.05],[-.85,-.3],[-.6,.2],[-.35,.05],[-.1,.45],[.15,.3],[.4,.8],[.65,.55],[.9,1.05],[1.15,.75],[1.4,1.3],[1.65,1.1],[.3,2.9],[3.3,-.6]] },
+    },
+    2: {
+      plano: { label: 'plano', seed: 101, n: 50, sigma: .3, f: (a, b) => 1 + .6*(a - CX) + .4*(b - CY) },
+      so1: { label: 'só X₁ importa', seed: 103, n: 50, sigma: .3, f: (a) => 1 + .8*(a - CX) },
+      corr: { label: 'X₁ e X₂ correlacionados', seed: 107, n: 50, sigma: .3, rho: .85, f: (a, b) => 1 + .6*(a - CX) + .4*(b - CY) },
+      inter: { label: 'plano com interação (como na Eq. (3.31))', seed: 109, n: 50, sigma: .3, f: (a, b) => { const u = a - CX, v = b - CY; return 1 + .3*u + .2*v + .3*u*v; } },
+      degrau2: { label: 'degraus', seed: 113, n: 60, sigma: .25, f: (a, b) => (a > CX ? 1.4 : 0) + (b > CY + .6 ? 1.1 : 0) - .2 },
+      sela: { label: 'sela', seed: 127, n: 60, sigma: .25, f: (a, b) => { const u = a - CX, v = b - CY; return 1 + .25*(u*u - v*v); } },
+      chapeu: { label: 'chapéu', seed: 131, n: 60, sigma: .25, f: (a, b) => { const u = a - CX, v = b - CY; return -.3 + 2.8*Math.exp(-(u*u + v*v)/1.4); } },
+    },
+  };
+  // Cada gerador recebe s: s = 0 dá os dados de sempre; s = TESTE, outra amostra da mesma distribuição (o conjunto de teste).
+  const TESTE = 1000;
+  const hash = t => [...t].reduce((h, ch) => Math.imul(h ^ ch.charCodeAt(0), 16777619) >>> 0, 2166136261);
+  // N: quantos pontos (o padrão é o n do conjunto; os pontos de avaliação do viés e da variância usam outro N)
+  function positions(mode, D, s, N = D.n) {
+    const r = rng(D.seed + s), out = [];
+    if (mode === 1) { for (let i = 0; i < N; i++) out.push(A + (B - A)*(i + r.u())/N); return out; }
+    for (let i = 0; i < N; i++) {
+      if (D.rho !== undefined) {
+        let a, b;
+        const rho = state.rho ?? D.rho;
+        do { const z1 = r.g(), z2 = r.g(); a = CX + 1.05*z1; b = CY + 1.05*(rho*z1 + Math.sqrt(1 - rho*rho)*z2); } while (a < A || a > B || b < AY || b > BY);
+        out.push([a, b]);
+      } else out.push([A + (B - A)*r.u(), AY + (BY - AY)*r.u()]);
+    }
+    return out;
+  }
+  const clampR = (mode, v) => mode === 1 ? Math.max(Y0 + .03, Math.min(Y1 - .03, v)) : Math.max(VLO, Math.min(VHI, v));
+  const isFixed = (mode, name) => !!DATA[mode][name].fixed;
+  // Pontos: com uma variável {x, y}; com duas {x, y, v}, onde (x, y) = (x₁, x₂) e v é a resposta.
+  function loadData(mode, name, sigma, s = 0) {
+    const D = DATA[mode][name];
+    if (D.fixed) return D.fixed.map(([x, y]) => ({ x, y }));
+    const xs = positions(mode, D, s), r = rng(hash(mode + name) + s);
+    return xs.map(x => {
+      const z = r.g();
+      return mode === 1 ? { x, y: clampR(1, D.f(x) + sigma*z) } : { x: x[0], y: x[1], v: clampR(2, D.f(x[0], x[1]) + sigma*z) };
+    });
+  }
+  const sigmaOf = (mode, name) => DATA[mode][name].sigma || 0;
+
+  const store = { 1: null, 2: null };
+  const state = { rho: null, mode: 1, points: [], test: [], dataset: App.datasets[1], sigma: sigmaOf(1, App.datasets[1]), tool: 'move', sel: -1, drag: -1, ydrag: null, model: null, flash: '', ghostD: '', ghostShown: false, probe: null, show: { fit: true, resid: true, test: false, truef: false, var: false }, edited: false, testMSE: null, P: Object.assign({}, App.params) };
+  state.points = loadData(1, state.dataset, state.sigma);
+  for (const inp of document.querySelectorAll('input[data-show]')) state.show[inp.dataset.show] = inp.checked;
+  const mode = () => state.mode;
+
+  /* ---------- formatação ---------- */
+  const num = (v, d = 2) => { const s = Math.abs(v).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }); return (v < 0 && Number(Math.abs(v).toFixed(d)) !== 0 ? '−' : '') + s; };
+  const three = v => Number(v.toPrecision(3));
+  const where = (x, y) => state.mode === 1 ? `x = ${num(x)}` : `(${num(x)}; ${num(y)})`;
+  const coord = p => state.mode === 1 ? `(${num(p.x)}; ${num(p.y)})` : `(${num(p.x)}; ${num(p.y)}), y = ${num(p.v)}`;
+  const xOf = p => state.mode === 1 ? [p.x] : [p.x, p.y];
+  const yOf = p => state.mode === 1 ? p.y : p.v;
+
+  /* ---------- eixos ---------- */
+  function drawAxes() {
+    for (const id of ['frame', 'cliprect']) attrs($(id), { x: ML, y: MT, width: PW, height: PH });
+    const g = $('axes');
+    g.textContent = '';
+    for (let v = -1; v <= 3; v++) {
+      attrs(el('line', 'tick', g), { x1: px(v), x2: px(v), y1: MT + PH, y2: MT + PH + 7 });
+      const t = el('text', 'ticklab', g);
+      attrs(t, { x: px(v), y: MT + PH + 25, 'text-anchor': 'middle' });
+      t.textContent = String(v).replace('-', '−');
+      attrs(el('line', 'tick', g), { y1: py(v), y2: py(v), x1: ML - 7, x2: ML });
+      const u = el('text', 'ticklab', g);
+      attrs(u, { x: ML - 12, y: py(v) + 5.5, 'text-anchor': 'end' });
+      u.textContent = String(v).replace('-', '−');
+    }
+    const axisLabel = (x, y, name, n, rot) => {
+      const t = el('text', 'axlab', g);
+      attrs(t, { x, y, 'text-anchor': 'middle' });
+      if (rot) t.setAttribute('transform', `rotate(-90 ${x} ${y})`);
+      t.textContent = name;
+      if (n) { const s = el('tspan', '', t); attrs(s, { dy: 6, 'font-size': 15, 'font-style': 'normal' }); s.textContent = n; }
+    };
+    if (state.mode === 1) { axisLabel(ML + PW/2, MT + PH + 56, 'X'); axisLabel(16, MT + PH/2, 'Y', '', true); }
+    else { axisLabel(ML + PW/2, MT + PH + 56, 'X', '1'); axisLabel(14, MT + PH/2, 'X', '2', true); }
+    svg.setAttribute('aria-label', state.mode === 1
+      ? 'Gráfico de Y contra X com a curva ajustada. Os pontos podem ser arrastados.'
+      : 'Gráfico de X2 contra X1; a cor de fundo mostra o valor previsto e a cor de cada ponto, o seu y. Os pontos podem ser arrastados.');
+  }
+
+  /* ---------- grade e curvas de nível ---------- */
+  const NX = 176, NY = 185, HX = (X1-X0)/(NX-1), HY = (Y1-Y0)/(NY-1);
+  const F = new Float64Array(NX*NY);
+  const LEVELS = Array.from({ length: NB - 1 }, (_, k) => VLO + (k + 1)*VSTEP);
+
+  // Curvas de nível por marching squares, com os segmentos ligados em polilinhas. tFn (opcional) devolve a posição do cruzamento numa aresta.
+  function contour(G, level, tFn, drawn) {
+    const adj = new Map(), pos = new Map();
+    const link = (a, b) => {
+      if (drawn) { const k = a < b ? a + ',' + b : b + ',' + a; if (drawn.has(k)) return; drawn.add(k); }
+      if (!adj.has(a)) adj.set(a, []);
+      if (!adj.has(b)) adj.set(b, []);
+      adj.get(a).push(b); adj.get(b).push(a);
+    };
+    const hKey = (i, j) => 2*(j*NX + i), vKey = (i, j) => 2*(j*NX + i) + 1;
+    const hPos = (i, j) => {
+      const k = hKey(i, j);
+      if (!pos.has(k)) { const a = G[j*NX+i], b = G[j*NX+i+1], t = tFn ? tFn(i, j, i+1, j) : (level-a)/(b-a); pos.set(k, [X0 + (i+t)*HX, Y0 + j*HY]); }
+      return k;
+    };
+    const vPos = (i, j) => {
+      const k = vKey(i, j);
+      if (!pos.has(k)) { const a = G[j*NX+i], b = G[(j+1)*NX+i], t = tFn ? tFn(i, j, i, j+1) : (level-a)/(b-a); pos.set(k, [X0 + i*HX, Y0 + (j+t)*HY]); }
+      return k;
+    };
+    for (let j = 0; j < NY-1; j++) for (let i = 0; i < NX-1; i++) {
+      const a = G[j*NX+i], b = G[j*NX+i+1], c = G[(j+1)*NX+i+1], d = G[(j+1)*NX+i];
+      const m = (a >= level ? 1 : 0) | (b >= level ? 2 : 0) | (c >= level ? 4 : 0) | (d >= level ? 8 : 0);
+      if (m === 0 || m === 15) continue;
+      const Bt = () => hPos(i, j), R = () => vPos(i+1, j), T = () => hPos(i, j+1), L = () => vPos(i, j);
+      switch (m) {
+        case 1: case 14: link(L(), Bt()); break;
+        case 2: case 13: link(Bt(), R()); break;
+        case 4: case 11: link(R(), T()); break;
+        case 8: case 7: link(T(), L()); break;
+        case 3: case 12: link(L(), R()); break;
+        case 6: case 9: link(Bt(), T()); break;
+        case 5: case 10: {
+          const center = (a+b+c+d)/4 >= level;
+          if ((m === 5) === center) { link(L(), T()); link(Bt(), R()); }
+          else { link(L(), Bt()); link(R(), T()); }
+          break;
+        }
+      }
+    }
+    const seen = new Set();
+    let d = '';
+    const walk = start => {
+      let cur = start, prev = -1, first = true;
+      const p0 = pos.get(start);
+      d += `M${px(p0[0]).toFixed(1)} ${py(p0[1]).toFixed(1)}`;
+      seen.add(cur);
+      for (;;) {
+        const next = adj.get(cur).find(v => v !== prev && !seen.has(v));
+        if (next === undefined) {
+          if (!first && adj.get(cur).includes(start) && prev !== start) d += 'Z';
+          return;
+        }
+        const q = pos.get(next);
+        d += `L${px(q[0]).toFixed(1)} ${py(q[1]).toFixed(1)}`;
+        seen.add(next); prev = cur; cur = next; first = false;
+      }
+    };
+    for (const [k, v] of adj) if (v.length === 1 && !seen.has(k)) walk(k);
+    for (const k of adj.keys()) if (!seen.has(k)) walk(k);
+    return d;
+  }
+  // Curvas de nível de uma função f nas faixas da escala. exact: cruzamento achado por bisseção (para ŷ constante por partes).
+  function levelLines(G, f, exact) {
+    let d = '';
+    for (const lev of LEVELS) {
+      const tFn = exact ? (i, j, i2, j2) => {
+        const xa = X0 + i*HX, ya = Y0 + j*HY, xb = X0 + i2*HX, yb = Y0 + j2*HY, s0 = G[j*NX + i] >= lev;
+        let lo = 0, hi = 1;
+        // 7 passos: o cruzamento fica a menos de 1/256 da aresta (0,02 px)
+        for (let k = 0; k < 7; k++) { const t = (lo + hi)/2; if ((f(xa + (xb - xa)*t, ya + (yb - ya)*t) >= lev) === s0) lo = t; else hi = t; }
+        return (lo + hi)/2;
+      } : null;
+      d += contour(G, lev, tFn);
+    }
+    return d;
+  }
+  // Curva de uma variável: amostra fina mais os dois lados de cada salto (breaks), o que deixa os degraus exatos.
+  function curveD(f, breaks) {
+    const xs = [], N = 1050;
+    for (let k = 0; k <= N; k++) xs.push(X0 + k*(X1 - X0)/N);
+    if (breaks) for (const b of breaks) if (b > X0 && b < X1) xs.push(b - 1e-6, b + 1e-6);
+    xs.sort((a, b) => a - b);
+    let d = '', pen = false;
+    for (const x of xs) {
+      const v = f(x);
+      if (!Number.isFinite(v)) { pen = false; continue; }
+      const yy = Math.max(Y0 - 3, Math.min(Y1 + 3, v));
+      d += (pen ? 'L' : 'M') + px(x).toFixed(2) + ' ' + py(yy).toFixed(2);
+      pen = true;
+    }
+    return d;
+  }
+
+  /* ---------- cores ---------- */
+  const cv = $('cv'), ctx = cv.getContext('2d');
+  const off = document.createElement('canvas'); off.width = NX; off.height = NY;
+  const offctx = off.getContext('2d'), img = offctx.createImageData(NX, NY);
+  let colors = null;
+  const hex = h => { h = h.replace('#', ''); if (h.length === 3) h = h.split('').map(c => c + c).join(''); const n = parseInt(h, 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  function readColors() {
+    const cs = getComputedStyle(document.documentElement), g = n => cs.getPropertyValue(n).trim();
+    const ramp = Array.from({ length: 13 }, (_, k) => hex(g('--r' + k) || '#888888'));
+    colors = { plot: g('--plot'), ramp, ink: g('--ink'), muted: g('--muted'), rule: g('--rule'), tint: g('--tint'), orange: g('--orange') };
+    colors.band = Array.from({ length: NB }, (_, k) => rgbOf(VLO + (k + .5)*VSTEP));
+    buildLegend();
+  }
+  // Cor contínua de um valor da resposta, interpolando a rampa
+  function rgbOf(v) {
+    const t = Math.max(0, Math.min(1, (v - VLO)/(VHI - VLO)))*12, k = Math.min(11, Math.floor(t)), a = t - k, c0 = colors.ramp[k], c1 = colors.ramp[k + 1];
+    return [0, 1, 2].map(j => Math.round(c0[j] + (c1[j] - c0[j])*a));
+  }
+  const cssOf = v => { const c = rgbOf(v); return `rgb(${c[0]},${c[1]},${c[2]})`; };
+  const bandOf = v => Math.max(0, Math.min(NB - 1, Math.floor((v - VLO)/VSTEP)));
+  function buildLegend() {
+    const W = 300, h = 18, w = W/NB;
+    let s = `<svg viewBox="0 0 ${W + 16} 44" role="img" aria-label="Escala de cores de ${num(VLO, 1)} a ${num(VHI, 1)}, em faixas de ${num(VSTEP, 1)}">`;
+    for (let k = 0; k < NB; k++) { const c = colors.band[k]; s += `<rect x="${8 + k*w}" y="2" width="${w + .5}" height="${h}" fill="rgb(${c[0]},${c[1]},${c[2]})"></rect>`; }
+    s += `<rect x="8" y="2" width="${W}" height="${h}" fill="none" stroke="var(--rule)"></rect>`;
+    for (let v = Math.ceil(VLO); v <= VHI; v++) { const x = 8 + (v - VLO)/VSTEP*w; s += `<line x1="${x}" x2="${x}" y1="${2 + h}" y2="${7 + h}" stroke="var(--muted)"></line><text x="${x}" y="${h + 20}" text-anchor="middle">${String(v).replace('-', '−')}</text>`; }
+    $('v-legend').innerHTML = s + '</svg>';
+  }
+  function fitCanvas() {
+    const r = cv.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const w = Math.max(1, Math.round(r.width*dpr)), h = Math.max(1, Math.round(r.height*dpr));
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; return true; }
+    return false;
+  }
+  // Duas variáveis: cada nó da grade vira um pixel da imagem, desenhada ampliada e centrada nos nós.
+  let painted = false;
+  function paint() {
+    fitCanvas();
+    const W = cv.width, H = cv.height;
+    ctx.fillStyle = colors.plot;
+    ctx.fillRect(0, 0, W, H);
+    if (state.mode !== 2 || !painted || !state.show.fit) return;
+    const data = img.data;
+    for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+      const c = colors.band[bandOf(F[j*NX + i])], o = 4*((NY - 1 - j)*NX + i);
+      data[o] = c[0]; data[o+1] = c[1]; data[o+2] = c[2]; data[o+3] = 255;
+    }
+    offctx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+    const cw = W/(NX - 1), ch = H/(NY - 1);
+    ctx.drawImage(off, -cw/2, -ch/2, W + cw, H + ch);
+  }
+
+  /* ---------- pontos ---------- */
+  const coarse = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+  let nodes = [];
+  function buildPoints() {
+    const g = $('layer-points');
+    g.textContent = '';
+    nodes = state.points.map((p, i) => {
+      const n = el('g', 'pt', g);
+      attrs(n, { tabindex: 0, role: 'button', 'data-i': i });
+      const ring = el('circle', 'ring', n); ring.setAttribute('r', 12.5);
+      const dot = el('circle', 'dot', n);
+      const hit = el('circle', 'hit', n); hit.setAttribute('r', coarse ? 26 : 17);
+      return { n, ring, dot, hit };
+    });
+  }
+
+  /* ---------- conjunto de teste: outra amostra do mesmo gerador, fora do ajuste ---------- */
+  function buildTest() {
+    const g = $('layer-test');
+    g.textContent = '';
+    for (const p of state.test) {
+      const n = el('g', 'tpt', g);
+      if (state.mode === 2) attrs(el('circle', 'out', n), { cx: px(p.x), cy: py(p.y), r: 7.6 });
+      const c = el('circle', '', n);
+      attrs(c, { cx: px(p.x), cy: py(p.y), r: 5.2 });
+      if (state.mode === 2) c.style.stroke = cssOf(p.v);
+    }
+  }
+  function refreshTest() {
+    state.test = state.show.test && !isFixed(state.mode, state.dataset) ? loadData(state.mode, state.dataset, state.sigma, TESTE) : [];
+    buildTest();
+  }
+
+  /* ---------- f verdadeira: a função que gerou os dados ---------- */
+  const Ftrue = new Float64Array(NX*NY);
+  function refreshTrue() {
+    const D = DATA[state.mode][state.dataset], has = !!D.f;
+    $('c-truef').hidden = !has;
+    let d = '';
+    if (has && state.show.truef) {
+      if (state.mode === 1) d = curveD(D.f, null);
+      else {
+        for (let j = 0, q = 0; j < NY; j++) for (let i = 0; i < NX; i++, q++) Ftrue[q] = D.f(X0 + i*HX, Y0 + j*HY);
+        d = levelLines(Ftrue, D.f, false);
+      }
+    }
+    $('truef').setAttribute('d', d);
+  }
+
+  /* ---------- erro de treino e de teste ---------- */
+  function errors(m, pts) {
+    if (!m.ok || !pts.length) return null;
+    let rss = 0, my = 0;
+    for (const p of pts) my += yOf(p);
+    my /= pts.length;
+    let tss = 0;
+    for (const p of pts) { const r = yOf(p) - m.f(p.x, p.y); rss += r*r; tss += (yOf(p) - my)**2; }
+    return { rss, mse: rss/pts.length, r2: tss > 0 ? 1 - rss/tss : null, n: pts.length };
+  }
+  function dataLine(m) {
+    const tr = state.train, te = state.testE, sg = state.sigma, has = !!DATA[state.mode][state.dataset].f;
+    const r2 = e => e && e.r2 !== null ? num(e.r2, 3) : '—';
+    let s = `<table class="ktab"><caption class="sr">Erro quadrático médio e R² no treino e no teste</caption><thead><tr><th scope="col"><span class="sr">Conjunto</span></th><th scope="col">MSE</th><th scope="col">R²</th></tr></thead><tbody>`;
+    s += `<tr><td>Treino (<i>n</i> = ${state.points.length})</td><td>${tr ? num(tr.mse, 3) : '—'}</td><td>${r2(tr)}</td></tr>`;
+    if (state.test.length) s += `<tr><td>Teste (<i>m</i> = ${state.test.length})</td><td>${te ? num(te.mse, 3) : '—'}</td><td>${r2(te)}</td></tr>`;
+    s += '</tbody></table>';
+    const notes = [];
+    if (state.show.test && isFixed(state.mode, state.dataset)) notes.push('Sem conjunto de teste: estes pontos são fixos.');
+    if (has) notes.push(`Erro irredutível Var(<i>ϵ</i>) = <i>σ</i>² = <span class="num">${num(sg*sg, 3)}</span>: em média, nenhum método tem MSE de teste menor que isso, Eq. (2.7).`);
+    if (vari && varOn()) notes.push(`Variabilidade em ${vari.models.length} amostras novas (${Math.min(NCURV, vari.models.length)} delas em cinza; a média de todas em pontilhado azul): viés² médio ≈ <span class="num">${num(vari.b2, 3)}</span> e variância média ≈ <span class="num">${num(vari.v, 3)}</span>, no intervalo dos dados. Viés² + variância + σ² ≈ <span class="num">${num(vari.b2 + vari.v + sg*sg, 3)}</span> estima o MSE de teste esperado, Eq. (2.7).`);
+    notes.push('MSE como na Eq. (2.5), RSS/<i>n</i>; R² = 1 − RSS/TSS, Eq. (3.17), que no teste usa a média do teste, como o <code>score</code> do scikit-learn.');
+    $('v-data').innerHTML = s + `<p class="note">${notes.join(' ')}</p>`;
+  }
+
+  /* ---------- amostras novas do gerador: variabilidade, viés e variância (Eq. (2.7)) ---------- */
+  // Só dependem do conjunto, de σ (e ρ) e dos parâmetros, não dos pontos arrastados. As contas longas rodam em fatias de
+  // ~12 ms (job), para a página não travar; durante o arraste de um ponto elas esperam.
+  const NREP = 40, NCURV = 20;
+  const jobs = {};
+  function startJob(name, n, step, done, progress) {
+    const id = jobs[name] = {};
+    let k = 0;
+    const tick = () => {
+      if (jobs[name] !== id) return;
+      if (state.drag >= 0) { setTimeout(tick, 80); return; }
+      const t0 = performance.now();
+      while (k < n && performance.now() - t0 < 12) step(k++);
+      if (k < n) { if (progress) progress(k/n); setTimeout(tick, 0); }
+      else { delete jobs[name]; done(); }
+    };
+    setTimeout(tick, 0);
+  }
+  const stopJob = name => { delete jobs[name]; };
+  // Amostra de treino r (r = 1…NREP): s = 2000 + r, os mesmos x e z para qualquer parâmetro
+  const sample = r => api.design(loadData(state.mode, state.dataset, state.sigma, 2000 + r));
+  // Pontos x₀ onde viés e variância são calculados: com uma variável, 201 pontos igualmente espaçados no intervalo dos dados
+  // (os x vêm de uma uniforme); com duas, 300 pontos sorteados do próprio gerador. Também f(x₀).
+  let evalPts = null, evalKey = '';
+  function evalSet() {
+    const D = DATA[state.mode][state.dataset], k = [state.mode, state.dataset, state.rho].join('|');
+    if (k === evalKey) return evalPts;
+    const X = state.mode === 1 ? Array.from({ length: 201 }, (_, i) => [A + (B - A)*i/200]) : positions(2, D, 5000, 300);
+    evalKey = k;
+    return evalPts = { X, fx: Float64Array.from(X, x => D.f(x[0], x[1])) };
+  }
+  // Viés² e variância médios em x₀, a partir das previsões das NREP amostras (S1 = soma, S2 = soma dos quadrados)
+  function bvStats(S1, S2, R, fx) {
+    let b2 = 0, v = 0;
+    for (let e = 0; e < fx.length; e++) { const mu = S1[e]/R; b2 += (mu - fx[e])**2; v += Math.max(0, (S2[e] - R*mu*mu)/(R - 1)); }
+    return { b2: b2/fx.length, v: v/fx.length };
+  }
+  const api2 = () => Object.assign({}, api, { state: Object.assign({}, state, { test: [] }) });
+
+  /* ---------- variabilidade (uma variável): o mesmo método em NREP amostras novas; NCURV curvas cinza ---------- */
+  let vari = null, varKey = '', varTimer = null;
+  const varKeyNow = () => [state.mode, state.dataset, state.sigma, JSON.stringify(state.P)].join('|');
+  const varOn = () => state.show.var && state.mode === 1 && !!DATA[1][state.dataset].f;
+  function refreshVar() {
+    $('c-var').hidden = state.mode !== 1 || !DATA[1][state.dataset].f;
+    if (!varOn()) { vari = null; varKey = ''; stopJob('var'); drawVar(); return; }
+    const k = varKeyNow();
+    if (k === varKey) return;
+    varKey = k; vari = null; stopJob('var'); drawVar();
+    clearTimeout(varTimer);
+    varTimer = setTimeout(() => computeVar(k), 150);
+  }
+  function computeVar(k) {
+    if (k !== varKeyNow() || !varOn()) return;
+    const a2 = api2(), P = state.P, models = [];
+    startJob('var', NREP, r => { const m = App.fit(sample(r + 1), P, a2); if (m.ok) models.push(m); }, () => {
+      if (k !== varKeyNow() || !varOn() || models.length < 2) return;
+      const E = evalSet(), S1 = new Float64Array(E.X.length), S2 = new Float64Array(E.X.length);
+      for (const m of models) E.X.forEach(([x], e) => { const v = m.f(x); S1[e] += v; S2[e] += v*v; });
+      vari = Object.assign({ models }, bvStats(S1, S2, models.length, E.fx));
+      // As curvas só mudam com os parâmetros: calculadas uma vez aqui, não a cada quadro
+      vari.d = models.slice(0, NCURV).map(m => curveD(m.f, App.breaks ? App.breaks(m, api) : null)).join('');
+      vari.dm = curveD(x => models.reduce((a, m) => a + m.f(x), 0)/models.length, null);
+      render();
+    });
+  }
+  function drawVar() {
+    let d = '', dm = '';
+    if (vari && varOn()) { d = vari.d; dm = vari.dm; }
+    $('varp').setAttribute('d', d);
+    $('varm').setAttribute('d', dm);
+  }
+  function varAt(x) {
+    if (!vari || !varOn()) return '';
+    const q = vari.models.map(m => m.f(x)), mu = q.reduce((a, c) => a + c, 0)/q.length, f = DATA[1][state.dataset].f(x);
+    const b2 = (mu - f)**2, v = q.reduce((a, c) => a + (c - mu)**2, 0)/(q.length - 1), s2 = state.sigma*state.sigma;
+    return ` Nas ${q.length} amostras novas, neste x: viés² ≈ <span class="num">${num(b2, 3)}</span>, variância ≈ <span class="num">${num(v, 3)}</span>; somando σ² = <span class="num">${num(s2, 3)}</span>, o erro de teste esperado aqui é cerca de <span class="num">${num(b2 + v + s2, 3)}</span> (Eq. (2.7)).`;
+  }
+
+  /* ---------- viés² e variância contra a flexibilidade, como na Fig. 2.12 (Eq. (2.7)) ---------- */
+  // Gancho App.biasVar (opcional): { key: o parâmetro do eixo; skip: outros parâmetros que não mudam o ajuste;
+  //   name: nome do parâmetro (HTML); values(api): os valores calculados; pos(v): posição no eixo; ticks(api): [[v, rótulo]];
+  //   axis: título do eixo; right: o que fica à direita ("menos flexível"…); text(v): o valor por extenso (HTML);
+  //   cur(P, m): valor atual; set(api, v): escolhe v; fits(D, P, values, api): um f̂ para cada valor, sem efeitos colaterais }
+  let bv = null, bvKey = '', bvTimer = null, bvVis = true, bvPend = null, bvProg = 0;
+  const bvAvail = () => !!App.biasVar && !!DATA[state.mode][state.dataset].f;
+  // name, axis e right podem ser texto ou função (por exemplo, diferentes com uma e com duas variáveis)
+  const hv = x => typeof x === 'function' ? x(api) : x;
+  function bvKeyNow() {
+    const H = App.biasVar, P = Object.assign({}, state.P);
+    for (const k of [H.key, ...(H.skip || [])]) delete P[k];
+    return [state.mode, state.dataset, state.sigma, state.rho, JSON.stringify(P)].join('|');
+  }
+  function refreshBV() {
+    const ok = bvAvail();
+    $('s-bv').hidden = !ok;
+    if (!ok) { stopJob('bv'); bv = null; bvKey = ''; return; }
+    const k = bvKeyNow();
+    if (k !== bvKey) { bvKey = k; bv = null; bvProg = 0; stopJob('bv'); clearTimeout(bvTimer); bvTimer = setTimeout(() => computeBV(k), 300); }
+    drawBV();
+  }
+  function computeBV(k) {
+    if (k !== bvKeyNow() || !bvAvail()) return;
+    if (!bvVis) { bvPend = k; drawBV(); return; }
+    bvPend = null;
+    const H = App.biasVar, E = evalSet(), vals = H.values(api), ne = E.X.length, P = Object.assign({}, state.P);
+    const S1 = vals.map(() => new Float64Array(ne)), S2 = vals.map(() => new Float64Array(ne));
+    let R = 0;
+    startJob('bv', NREP, r => {
+      const fs = H.fits(sample(r + 1), P, vals, api);
+      // Pontos por fora e valores por dentro: os ajustes com somas parciais (floresta, boosting) reaproveitam as contas de cada ponto
+      for (let e = 0; e < ne; e++) { const x = E.X[e]; for (let a = 0; a < fs.length; a++) { const v = fs[a](x[0], x[1]); S1[a][e] += v; S2[a][e] += v*v; } }
+      R++;
+    }, () => {
+      if (k !== bvKeyNow()) return;
+      const s2 = state.sigma*state.sigma, st = vals.map((_, a) => bvStats(S1[a], S2[a], R, E.fx));
+      bv = { vals, R, b2: st.map(q => q.b2), v: st.map(q => q.v), mse: st.map(q => q.b2 + q.v + s2), s2 };
+      drawBV();
+    }, p => { bvProg = p; drawBV(); });
+  }
+  if (window.IntersectionObserver) new IntersectionObserver(es => { for (const e of es) { bvVis = e.isIntersecting; if (bvVis && bvPend && bvPend === bvKeyNow()) computeBV(bvPend); } }).observe($('s-bv'));
+  let bvGeo = null;
+  function drawBV() {
+    const H = App.biasVar, box = $('v-bv');
+    if (!H || $('s-bv').hidden) return;
+    const W = 300, Ht = 178, L = 40, Rr = 56, T = 10, Bm = 32, iw = W - L - Rr, ih = Ht - T - Bm;
+    const vals = bv ? bv.vals : H.values(api), ps = vals.map(H.pos), p0 = Math.min(...ps), p1 = Math.max(...ps);
+    const X = p => L + (p - p0)/((p1 - p0) || 1)*iw;
+    const cur = H.cur(state.P, state.model, api), pc = H.pos(cur);
+    // Nada mudou desde o último desenho (por exemplo, durante o arraste de um ponto)? Então não refaz o SVG.
+    const sig = [bvKey, bv ? bv.R : -1, bvVis, Math.round(100*bvProg), pc].join('|');
+    if (sig === drawBV.sig && box.firstChild) return;
+    drawBV.sig = sig;
+    bvGeo = { W, X, vals, ps };
+    let s = `<svg viewBox="0 0 ${W} ${Ht}" aria-hidden="true"><defs><clipPath id="bvclip"><rect x="${L}" y="${T}" width="${iw}" height="${ih}"></rect></clipPath></defs><rect class="ax" x="${L}" y="${T}" width="${iw}" height="${ih}"></rect>`;
+    if (pc >= p0 - 1e-9 && pc <= p1 + 1e-9) s += `<line x1="${X(pc).toFixed(1)}" x2="${X(pc).toFixed(1)}" y1="${T}" y2="${T + ih}" stroke="var(--rule)" stroke-width="6" opacity=".7"></line>`;
+    for (const [v, t] of H.ticks(api)) if (H.pos(v) >= p0 - 1e-9 && H.pos(v) <= p1 + 1e-9) s += `<text x="${X(H.pos(v)).toFixed(1)}" y="${T + ih + 14}" text-anchor="middle">${t}</text>`;
+    s += `<text x="${L + iw/2}" y="${Ht - 2}" text-anchor="middle">${hv(H.axis)}</text>`;
+    let ac = 0;
+    ps.forEach((p, a) => { if (Math.abs(p - pc) < Math.abs(ps[ac] - pc)) ac = a; });
+    box.setAttribute('aria-valuemax', vals.length - 1);
+    box.setAttribute('aria-valuenow', ac);
+    if (!bv) {
+      s += `<text class="bvwait" x="${L + iw/2}" y="${T + ih/2 + 4}" text-anchor="middle">${bvVis ? `Calculando em ${NREP} amostras… ${Math.round(100*bvProg)}%` : 'Calcula quando esta parte aparece na tela.'}</text></svg>`;
+      box.innerHTML = s;
+      box.setAttribute('aria-valuetext', 'calculando');
+      $('v-bvnote').textContent = '';
+      return;
+    }
+    const mn = Math.min(...bv.mse), mx = Math.max(...bv.mse);
+    const top = Math.max(1.1*Math.min(mx, 3*mn), 1.25*bv.s2, 1e-3);
+    const Y = v => T + ih - Math.min(v, top*1.05)/top*ih;
+    const dots = vals.length <= 12;
+    const line = (arr, col, w) => { let d = ''; arr.forEach((y, a) => { d += (a ? 'L' : 'M') + X(ps[a]).toFixed(1) + ' ' + Y(y).toFixed(1); }); return `<path d="${d}" class="ln" stroke="${col}" stroke-width="${w}"></path>` + (dots ? arr.map((y, a) => `<circle cx="${X(ps[a]).toFixed(1)}" cy="${Y(y).toFixed(1)}" r="2.6" fill="${col}" stroke="var(--plot)" stroke-width="1"></circle>`).join('') : ''); };
+    const amin = bv.mse.indexOf(mn);
+    s += `<g clip-path="url(#bvclip)"><line x1="${L}" x2="${L + iw}" y1="${Y(bv.s2)}" y2="${Y(bv.s2)}" stroke="var(--muted)" stroke-width="1.3" stroke-dasharray="5 4"></line>`;
+    s += `<line x1="${X(ps[amin]).toFixed(1)}" x2="${X(ps[amin]).toFixed(1)}" y1="${T}" y2="${T + ih}" stroke="var(--ink)" stroke-width="1.2" stroke-dasharray="1.5 3"></line>`;
+    s += line(bv.b2, 'var(--pt)', 2) + line(bv.v, 'var(--orange)', 2) + line(bv.mse, 'var(--ink)', 2.6) + '</g>';
+    // Rótulos diretos à direita, afastados uns dos outros quando as curvas terminam perto
+    const last = ps.indexOf(p1), labs = [{ t: 'MSE', y: Y(bv.mse[last]) }, { t: 'viés²', y: Y(bv.b2[last]) }, { t: 'variância', y: Y(bv.v[last]) }, { t: 'σ²', y: Y(bv.s2) }];
+    labs.sort((a, b) => a.y - b.y);
+    for (let q = 1; q < labs.length; q++) labs[q].y = Math.max(labs[q].y, labs[q - 1].y + 11);
+    for (let q = labs.length - 1; q >= 0; q--) { if (labs[q].y > T + ih) labs[q].y = T + ih; if (q < labs.length - 1) labs[q].y = Math.min(labs[q].y, labs[q + 1].y - 11); }
+    for (const lb of labs) s += `<text x="${L + iw + 4}" y="${(lb.y + 4).toFixed(1)}">${lb.t}</text>`;
+    for (const v of [0, top/2]) s += `<text x="${L - 5}" y="${Y(v) + 4}" text-anchor="end">${num(v, top < .2 ? 3 : 2)}</text>`;
+    box.innerHTML = s + '</svg>';
+    box.setAttribute('aria-valuetext', `${H.text(vals[ac]).replace(/<[^>]+>/g, '')}: viés² ${num(bv.b2[ac], 3)}, variância ${num(bv.v[ac], 3)}, MSE de teste esperado ${num(bv.mse[ac], 3)}`);
+    const n = DATA[state.mode][state.dataset].n;
+    $('v-bvnote').innerHTML = `Para cada ${hv(H.name)}, o mesmo método ajustado em ${bv.R} amostras de treino novas do gerador (<i>n</i> = ${n} cada): viés² (azul) e variância (laranja) de <i>f̂</i>(<i>x</i><sub>0</sub>), em média nos <i>x</i><sub>0</sub> ${state.mode === 1 ? 'do intervalo dos dados' : 'sorteados do gerador'}. A linha grossa é o MSE de teste esperado, viés² + variância + Var(<i>ϵ</i>), Eq. (2.7); a tracejada, Var(<i>ϵ</i>) = <i>σ</i>²; a pontilhada marca o menor MSE esperado, com ${H.text(vals[amin])} (<span class="num">${num(mn, 3)}</span>).${hv(H.right) ? ` À direita, ${hv(H.right)}.` : ''} Não depende dos pontos arrastados. Clique no gráfico para escolher ${hv(H.name)}.${mx > top*1.05 ? ' Valores acima do quadro foram cortados.' : ''}`;
+  }
+  {
+    const box = $('v-bv');
+    const pick = a => { const H = App.biasVar; if (!H || !bvGeo) return; H.set(api, bvGeo.vals[a]); state.flash = ''; render(); };
+    const near = ev => { const g = bvGeo, r = box.querySelector('svg').getBoundingClientRect(), u = (ev.clientX - r.left)/r.width*g.W; let best = 0; g.ps.forEach((p, a) => { if (Math.abs(g.X(p) - u) < Math.abs(g.X(g.ps[best]) - u)) best = a; }); return best; };
+    let down = false;
+    box.addEventListener('pointerdown', ev => { if (!bvGeo || !box.querySelector('svg')) return; down = true; try { box.setPointerCapture(ev.pointerId); } catch (e) {} pick(near(ev)); ev.preventDefault(); });
+    box.addEventListener('pointermove', ev => { if (down && bvGeo) { const a = near(ev); if (a !== Number(box.getAttribute('aria-valuenow'))) pick(a); } });
+    box.addEventListener('pointerup', () => { down = false; });
+    box.addEventListener('pointercancel', () => { down = false; });
+    box.addEventListener('keydown', ev => {
+      const d = { ArrowLeft: -1, ArrowDown: -1, ArrowRight: 1, ArrowUp: 1 }[ev.key];
+      if (!d || !bvGeo) return;
+      ev.preventDefault();
+      // Os valores em ordem de posição no eixo
+      const ord = bvGeo.ps.map((p, a) => [p, a]).sort((x, y) => x[0] - y[0]).map(q => q[1]), cur = Number(box.getAttribute('aria-valuenow'));
+      const nx = ord[Math.max(0, Math.min(ord.length - 1, ord.indexOf(cur) + d))];
+      if (nx !== undefined) pick(nx);
+    });
+  }
+
+  /* ---------- gráfico 3D (duas variáveis): a superfície ŷ(X₁, X₂), os pontos e os resíduos ---------- */
+  // Projeção paralela com azimute e elevação. A ordem de pintura vem da varredura da grade de trás para a frente (campo de
+  // alturas), sem ordenar polígonos. Com ŷ constante por partes (App.steps3d), cada célula é um ladrilho plano, com parede
+  // vertical onde a vizinha da frente é mais baixa; ladrilhos vizinhos de mesma altura numa linha viram um polígono só.
+  // Pontos, pontos de teste e pedaços da f verdadeira são desenhados logo antes (se ficam atrás da superfície) ou logo
+  // depois (se ficam do lado de quem olha) da célula onde estão.
+  const cv3 = $('cv3d'), g3 = cv3.getContext('2d');
+  const VIEW0 = { az: -35, el: 28 }, view = Object.assign({}, VIEW0);
+  const LH = Math.max(X1 - X0, Y1 - Y0)/2, ZS = .8, ZC = (VLO + VHI)/2, HZ = (VHI - VLO)/2;
+  const LIGHT = (() => { const v = [-.35, -.55, .76], n = Math.hypot(...v); return v.map(c => c/n); })();
+  let vis3 = true, dirty3 = false, raf3 = 0, rot3 = false, last3 = 0, fine3 = 0;
+  // Com mudanças seguidas (arraste de ponto, giro, controle deslizante: dois desenhos a menos de 0,2 s) os ladrilhos têm o dobro
+  // do tamanho, para o quadro continuar rápido; 0,22 s depois da última mudança, o 3D é redesenhado fino.
+  function busy3() {
+    const now = performance.now(), b = state.drag >= 0 || rot3 || now - last3 < 200;
+    last3 = now;
+    if (b) { clearTimeout(fine3); fine3 = setTimeout(() => { last3 = 0; redraw3(); }, 220); }
+    return b;
+  }
+  const clampZ = z => Math.max(VLO, Math.min(VHI, z));
+  const shadeOf = (rgb, f) => `rgb(${Math.round(rgb[0]*f)},${Math.round(rgb[1]*f)},${Math.round(rgb[2]*f)})`;
+  const lit = (nx, ny, nz) => { const n = Math.hypot(nx, ny, nz) || 1; return .62 + .38*Math.max(0, (nx*LIGHT[0] + ny*LIGHT[1] + nz*LIGHT[2])/n); };
+  // Índice da célula de x numa lista crescente de fronteiras b (b[0] … b[n])
+  const cellAt = (b, x) => { let lo = 0, hi = b.length - 2; while (lo < hi) { const md = (lo + hi + 1) >> 1; if (b[md] <= x) lo = md; else hi = md - 1; } return lo; };
+  function draw3d() {
+    const on = state.mode === 2;
+    $('s-3d').hidden = !on;
+    if (!on || !colors) return;
+    if (!vis3) { dirty3 = true; return; }
+    dirty3 = false;
+    const coarse3 = busy3();
+    const rc = cv3.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const W = Math.max(1, Math.round(rc.width*dpr)), H = Math.max(1, Math.round(rc.height*dpr));
+    if (cv3.width !== W || cv3.height !== H) { cv3.width = W; cv3.height = H; }
+    const c = g3, fsz = Math.max(10.5, Math.min(13, 12.5*rc.width/602))*dpr, lw = dpr;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.fillStyle = colors.plot; c.fillRect(0, 0, W, H);
+    c.lineJoin = 'round'; c.lineCap = 'round';
+    const a = view.az*Math.PI/180, e = view.el*Math.PI/180, ca = Math.cos(a), sa = Math.sin(a), ce = Math.cos(e), se = Math.sin(e);
+    // Escala: a caixa cabe em qualquer azimute (raio horizontal Rh); na vertical, conforme a elevação atual
+    const hu = (X1 - X0)/2/LH, hv = (Y1 - Y0)/2/LH, Rh = Math.hypot(hu, hv), halfH = Rh*Math.abs(se) + ZS*ce;
+    const k = Math.min(W/(2*Rh + .55), H/(2*halfH + .42)), cx = W/2, cy = H/2 + .03*H;
+    const P = (x, y, z) => { const u = (x - CX)/LH, v = (y - CY)/LH, w = (clampZ(z) - ZC)/HZ*ZS, xr = u*ca - v*sa, yr = u*sa + v*ca; return [cx + k*xr, cy - k*(w*ce + yr*se)]; };
+    const poly = pts => { c.beginPath(); pts.forEach((q, i) => i ? c.lineTo(q[0], q[1]) : c.moveTo(q[0], q[1])); c.closePath(); };
+    const seg = (p, q) => { c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]); };
+    // Lados de trás da caixa: o chão (ou o teto, vendo de baixo) e as duas paredes mais distantes, com a grade dos eixos
+    const xb = sa > 0 ? X1 : X0, xf = sa > 0 ? X0 : X1, yb = ca > 0 ? Y1 : Y0, yf = ca > 0 ? Y0 : Y1, zb = se >= 0 ? VLO : VHI;
+    c.fillStyle = colors.tint; c.strokeStyle = colors.rule; c.lineWidth = lw;
+    c.globalAlpha = .55;
+    poly([P(X0, Y0, zb), P(X1, Y0, zb), P(X1, Y1, zb), P(X0, Y1, zb)]); c.fill();
+    poly([P(xb, Y0, VLO), P(xb, Y1, VLO), P(xb, Y1, VHI), P(xb, Y0, VHI)]); c.fill();
+    poly([P(X0, yb, VLO), P(X1, yb, VLO), P(X1, yb, VHI), P(X0, yb, VHI)]); c.fill();
+    c.globalAlpha = 1;
+    c.beginPath();
+    for (let t = -1; t <= 3; t++) {
+      seg(P(t, Y0, zb), P(t, Y1, zb)); seg(P(X0, t, zb), P(X1, t, zb));
+      seg(P(t, yb, VLO), P(t, yb, VHI)); seg(P(xb, t, VLO), P(xb, t, VHI));
+      seg(P(xb, Y0, t), P(xb, Y1, t)); seg(P(X0, yb, t), P(X1, yb, t));
+    }
+    c.stroke();
+    c.strokeStyle = colors.muted;
+    c.beginPath(); seg(P(X0, Y0, zb), P(X1, Y0, zb)); seg(P(X1, Y0, zb), P(X1, Y1, zb)); seg(P(X1, Y1, zb), P(X0, Y1, zb)); seg(P(X0, Y1, zb), P(X0, Y0, zb));
+    seg(P(xb, yb, VLO), P(xb, yb, VHI)); seg(P(xf, yb, VLO), P(xf, yb, VHI)); seg(P(xb, yf, VLO), P(xb, yf, VHI)); c.stroke();
+    // Células da superfície
+    const m = state.model, has = !!(m && m.ok && painted && state.show.fit);
+    const steps = has && (typeof App.steps3d === 'function' ? App.steps3d(m) : !!App.steps3d);
+    let nu, nv, bu, bw, xc, yc, Z = null, ZN = null;
+    if (steps) {
+      // Ladrilhos centrados nos nós pares da grade; fronteiras nos pontos médios
+      const ix = [], jy = [];
+      const st3 = coarse3 ? 4 : 2;
+      for (let i = 0; i < NX; i += st3) ix.push(i);
+      for (let j = 0; j < NY; j += st3) jy.push(j);
+      nu = ix.length; nv = jy.length;
+      xc = ix.map(i => X0 + i*HX); yc = jy.map(j => Y0 + j*HY);
+      bu = [X0, ...xc.slice(1).map((x, q) => (x + xc[q])/2), X1]; bw = [Y0, ...yc.slice(1).map((y, q) => (y + yc[q])/2), Y1];
+      Z = new Float64Array(nu*nv);
+      for (let j = 0; j < nv; j++) for (let i = 0; i < nu; i++) Z[j*nu + i] = clampZ(F[jy[j]*NX + ix[i]]);
+    } else {
+      // Malha com nós espalhados pela grade; as células ficam entre os nós
+      const MU = 36, MV = 38, ix = Array.from({ length: MU }, (_, q) => Math.round(q*(NX - 1)/(MU - 1))), jy = Array.from({ length: MV }, (_, q) => Math.round(q*(NY - 1)/(MV - 1)));
+      bu = ix.map(i => X0 + i*HX); bw = jy.map(j => Y0 + j*HY);
+      nu = MU - 1; nv = MV - 1;
+      xc = bu.slice(1).map((x, q) => (x + bu[q])/2); yc = bw.slice(1).map((y, q) => (y + bw[q])/2);
+      if (has) { ZN = new Float64Array(MU*MV); for (let j = 0; j < MV; j++) for (let i = 0; i < MU; i++) ZN[j*MU + i] = clampZ(F[jy[j]*NX + ix[i]]); }
+    }
+    const pre = new Array(nu*nv), post = new Array(nu*nv), put = (arr, id, it) => { (arr[id] || (arr[id] = [])).push(it); };
+    const side = (zItem, zSurf) => (zItem - zSurf)*(se >= 0 ? 1 : -1) >= 0 ? post : pre;
+    const idOf = (x, y) => cellAt(bw, y)*nu + cellAt(bu, x);
+    const sel = state.drag >= 0 ? state.drag : state.sel;
+    state.points.forEach((p, i) => {
+      const zh = has ? m.f(p.x, p.y) : null;
+      put(has ? side(p.v, zh) : post, idOf(p.x, p.y), { k: 0, p, i, zh });
+    });
+    for (const p of state.test) put(has ? side(p.v, m.f(p.x, p.y)) : post, idOf(p.x, p.y), { k: 1, p });
+    const D = DATA[2][state.dataset];
+    if (D.f && state.show.truef) {
+      // f verdadeira: linhas de arame pelos centros das células, uma a cada poucas células, em pedaços que não saem da célula
+      const every = Math.max(1, Math.round(nu/9));
+      const piece = (x1, y1, x2, y2, i, j) => {
+        const z1 = D.f(x1, y1), z2 = D.f(x2, y2);
+        const zs = has ? (steps ? Z[j*nu + i] : m.f((x1 + x2)/2, (y1 + y2)/2)) : 0;
+        // tolerância de 0,15: onde a f verdadeira quase coincide com a superfície, o arame continua visível
+        put(has ? side((z1 + z2)/2 + (se >= 0 ? .15 : -.15), zs) : post, j*nu + i, { k: 2, a: P(x1, y1, z1), b: P(x2, y2, z2) });
+      };
+      for (let j = Math.floor(every/2); j < nv; j += every) for (let i = 0; i < nu; i++) { piece(bu[i], yc[j], xc[i], yc[j], i, j); piece(xc[i], yc[j], bu[i + 1], yc[j], i, j); }
+      for (let i = Math.floor(every/2); i < nu; i += every) for (let j = 0; j < nv; j++) { piece(xc[i], bw[j], xc[i], yc[j], i, j); piece(xc[i], yc[j], xc[i], bw[j + 1], i, j); }
+    }
+    const pr = Math.max(4, 5.2*rc.width/602)*dpr;
+    const drawItems = list => {
+      if (!list) return;
+      let wire = false;
+      for (const it of list) if (it.k === 2) { if (!wire) { c.beginPath(); wire = true; } seg(it.a, it.b); }
+      if (wire) { c.save(); c.strokeStyle = colors.orange; c.lineWidth = 1.8*lw; c.stroke(); c.restore(); }
+      for (const it of list) {
+        if (it.k === 0) {
+          const q = P(it.p.x, it.p.y, it.p.v);
+          if (it.zh !== null && Number.isFinite(it.zh)) { const r = P(it.p.x, it.p.y, it.zh); c.strokeStyle = colors.muted; c.lineWidth = 1.5*lw; c.beginPath(); seg(q, r); c.stroke(); }
+          c.fillStyle = cssOf(it.p.v); c.strokeStyle = colors.ink; c.lineWidth = 1.2*lw;
+          c.beginPath(); c.arc(q[0], q[1], it.i === sel ? pr*1.25 : pr, 0, 2*Math.PI); c.fill(); c.stroke();
+          if (it.i === sel) { c.lineWidth = 2.2*lw; c.beginPath(); c.arc(q[0], q[1], pr*2.1, 0, 2*Math.PI); c.stroke(); }
+        } else if (it.k === 1) {
+          const q = P(it.p.x, it.p.y, it.p.v);
+          c.fillStyle = colors.plot; c.strokeStyle = cssOf(it.p.v); c.lineWidth = 2.2*lw;
+          c.beginPath(); c.arc(q[0], q[1], pr*.8, 0, 2*Math.PI); c.fill(); c.stroke();
+        }
+      }
+    };
+    // Ordem: de trás para a frente nas duas direções (linhas na direção de X₂; dentro de cada linha, na de X₁)
+    const iOrd = Array.from({ length: nu }, (_, q) => sa > 0 ? nu - 1 - q : q), jOrd = Array.from({ length: nv }, (_, q) => ca > 0 ? nv - 1 - q : q);
+    const dj = ca > 0 ? -1 : 1, ink = hex(colors.ink), mesh = `rgba(${ink[0]},${ink[1]},${ink[2]},.13)`;
+    for (const j of jOrd) {
+      if (!has) { for (const i of iOrd) { drawItems(pre[j*nu + i]); drawItems(post[j*nu + i]); } continue; }
+      if (steps) {
+        const jn = j + dj, vfront = ca > 0 ? bw[j] : bw[j + 1];
+        let t = 0;
+        while (t < nu) {
+          const h = Z[j*nu + iOrd[t]];
+          let t1 = t;
+          while (t1 + 1 < nu && Z[j*nu + iOrd[t1 + 1]] === h) t1++;
+          const ia = Math.min(iOrd[t], iOrd[t1]), ib = Math.max(iOrd[t], iOrd[t1]);
+          for (let q = t; q <= t1; q++) drawItems(pre[j*nu + iOrd[q]]);
+          const col = colors.band[bandOf(h)];
+          c.fillStyle = c.strokeStyle = shadeOf(col, lit(0, 0, 1)); c.lineWidth = lw*.8;
+          poly([P(bu[ia], bw[j], h), P(bu[ib + 1], bw[j], h), P(bu[ib + 1], bw[j + 1], h), P(bu[ia], bw[j + 1], h)]); c.fill(); c.stroke();
+          // Paredes da frente na direção de X₂ (para a linha seguinte, mais perto), em trechos de mesma altura vizinha
+          if (jn >= 0 && jn < nv) {
+            let q = t;
+            while (q <= t1) {
+              const hn = Z[jn*nu + iOrd[q]];
+              let q1 = q;
+              while (q1 + 1 <= t1 && Z[jn*nu + iOrd[q1 + 1]] === hn) q1++;
+              if (hn < h) {
+                const a0 = Math.min(iOrd[q], iOrd[q1]), a1 = Math.max(iOrd[q], iOrd[q1]);
+                c.fillStyle = c.strokeStyle = shadeOf(col, lit(0, dj, 0));
+                poly([P(bu[a0], vfront, h), P(bu[a1 + 1], vfront, h), P(bu[a1 + 1], vfront, hn), P(bu[a0], vfront, hn)]); c.fill(); c.stroke();
+              }
+              q = q1 + 1;
+            }
+          }
+          // Parede da frente na direção de X₁, no fim do trecho
+          if (t1 + 1 < nu) {
+            const hn = Z[j*nu + iOrd[t1 + 1]];
+            if (hn < h) {
+              const ue = sa > 0 ? bu[ia] : bu[ib + 1];
+              c.fillStyle = c.strokeStyle = shadeOf(col, lit(sa > 0 ? -1 : 1, 0, 0));
+              poly([P(ue, bw[j], h), P(ue, bw[j + 1], h), P(ue, bw[j + 1], hn), P(ue, bw[j], hn)]); c.fill(); c.stroke();
+            }
+          }
+          for (let q = t; q <= t1; q++) drawItems(post[j*nu + iOrd[q]]);
+          t = t1 + 1;
+        }
+      } else {
+        const MU = nu + 1;
+        for (const i of iOrd) {
+          const id = j*nu + i;
+          drawItems(pre[id]);
+          const z00 = ZN[j*MU + i], z10 = ZN[j*MU + i + 1], z01 = ZN[(j + 1)*MU + i], z11 = ZN[(j + 1)*MU + i + 1];
+          const du = (bu[i + 1] - bu[i])/LH, dv = (bw[j + 1] - bw[j])/LH, s = ZS/HZ;
+          const gx = ((z10 + z11) - (z00 + z01))/2*s/du, gy = ((z01 + z11) - (z00 + z10))/2*s/dv;
+          c.fillStyle = shadeOf(rgbOf((z00 + z10 + z01 + z11)/4), lit(-gx, -gy, 1));
+          c.strokeStyle = mesh; c.lineWidth = lw*.7;
+          poly([P(bu[i], bw[j], z00), P(bu[i + 1], bw[j], z10), P(bu[i + 1], bw[j + 1], z11), P(bu[i], bw[j + 1], z01)]);
+          c.fill(); c.stroke();
+          drawItems(post[id]);
+        }
+      }
+    }
+    // Rótulos: X₁ e X₂ nas arestas da frente do chão; Y na aresta vertical mais à esquerda
+    const cs = getComputedStyle(document.documentElement);
+    c.fillStyle = colors.muted; c.font = `${fsz}px ${cs.getPropertyValue('--ui')}`;
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    const off = .32*LH, yo = yf + (yf === Y0 ? -off : off), xo = xf + (xf === X0 ? -off : off);
+    const lab = t => String(t).replace('-', '−');
+    for (let t = -1; t <= 3; t++) { let q = P(t, yo, VLO); c.fillText(lab(t), q[0], q[1]); q = P(xo, t, VLO); c.fillText(lab(t), q[0], q[1]); }
+    let cl = [X0, Y0];
+    for (const q of [[X1, Y0], [X1, Y1], [X0, Y1]]) if (P(q[0], q[1], VLO)[0] < P(cl[0], cl[1], VLO)[0]) cl = q;
+    c.textAlign = 'right';
+    for (let t = -1; t <= 3; t++) { const q = P(cl[0], cl[1], t); c.fillText(lab(t), q[0] - 8*dpr, q[1]); }
+    c.fillStyle = colors.ink; c.font = `italic ${fsz*1.35}px ${cs.getPropertyValue('--math')}`; c.textAlign = 'center';
+    let q = P((X0 + X1)/2, yf + (yf === Y0 ? -2.1*off : 2.1*off), VLO); c.fillText('X₁', q[0], q[1]);
+    q = P(xf + (xf === X0 ? -2.1*off : 2.1*off), (Y0 + Y1)/2, VLO); c.fillText('X₂', q[0], q[1]);
+    q = P(cl[0], cl[1], VHI); c.fillText('Y', q[0], q[1] - 14*dpr);
+    cv3.setAttribute('aria-label', `Superfície ajustada em três dimensões${steps ? ', em degraus' : ''}, com os ${state.points.length} pontos na altura do seu y. Azimute ${Math.round(view.az)} graus, elevação ${Math.round(view.el)} graus. Use as setas para girar.`);
+    $('v3d-note').innerHTML = `Arraste para girar (ou use as setas). Eixo vertical: <i>y</i> e <i>ŷ</i>, de −1,5 a 3,5, com as cores do mapa${has ? '; cada ponto fica na altura do seu <i>y</i>, ligado à superfície pelo resíduo' : ''}.${steps ? ' Aqui <i>ŷ</i> é constante por partes: a superfície tem degraus.' : ''}${D.f && state.show.truef ? ' Arame laranja: a <i>f</i> verdadeira.' : ''} Valores fora da caixa aparecem cortados na borda.`;
+  }
+  const redraw3 = () => { if (!raf3) raf3 = requestAnimationFrame(() => { raf3 = 0; draw3d(); }); };
+  {
+    let drag = null;
+    cv3.addEventListener('pointerdown', ev => { drag = { x: ev.clientX, y: ev.clientY, az: view.az, el: view.el }; rot3 = true; cv3.classList.add('dragging'); try { cv3.setPointerCapture(ev.pointerId); } catch (e) {} ev.preventDefault(); });
+    cv3.addEventListener('pointermove', ev => {
+      if (!drag) return;
+      view.az = drag.az - (ev.clientX - drag.x)*.45;
+      view.el = Math.max(-25, Math.min(89, drag.el + (ev.clientY - drag.y)*.35));
+      redraw3();
+    });
+    const end = () => { if (drag) { drag = null; rot3 = false; cv3.classList.remove('dragging'); redraw3(); } };
+    cv3.addEventListener('pointerup', end);
+    cv3.addEventListener('pointercancel', end);
+    cv3.addEventListener('keydown', ev => {
+      const d = { ArrowLeft: [5, 0], ArrowRight: [-5, 0], ArrowUp: [0, 5], ArrowDown: [0, -5] }[ev.key];
+      if (!d) return;
+      ev.preventDefault();
+      const f = ev.shiftKey ? 3 : 1;
+      view.az += d[0]*f; view.el = Math.max(-25, Math.min(89, view.el + d[1]*f));
+      redraw3();
+    });
+    $('v3d-reset').addEventListener('click', () => { Object.assign(view, VIEW0); redraw3(); });
+    if (window.IntersectionObserver) new IntersectionObserver(es => { for (const e of es) { vis3 = e.isIntersecting; if (vis3 && dirty3) redraw3(); } }).observe(cv3);
+    if (window.ResizeObserver) new ResizeObserver(() => { if (state.mode === 2 && state.model) redraw3(); }).observe(cv3);
+  }
+
+  /* ---------- API para o código de cada método ---------- */
+  const api = { state, $, el, attrs, num, three, coord, where, xOf, yOf, mode, cssOf, NX, NY, HX, HY, X0, X1, Y0, Y1, px, py, F, contour, levelLines, curveD, VLO, VHI, VSTEP, render: (o) => render(o), extra: $('layer-extra') };
+  // f verdadeira do conjunto atual (null nos conjuntos de pontos fixos)
+  api.trueF = () => DATA[state.mode][state.dataset].f || null;
+  // n das amostras novas do gerador (as do viés e da variância)
+  api.nGen = () => DATA[state.mode][state.dataset].n || state.points.length;
+  api.design = pts => {
+    const X = pts.map(xOf), y = Float64Array.from(pts, yOf);
+    return { X, y, n: pts.length, p: state.mode, pts };
+  };
+  api.pointText = i => {
+    const p = state.points[i], m = state.model, yh = m && m.ok ? m.f(p.x, p.y) : NaN;
+    return `<span class="num">${coord(p)}.</span>${Number.isFinite(yh) ? ` Resíduo <i>y</i> − <i>ŷ</i> = <span class="num">${num(yOf(p) - yh)}</span>.` : ''}`;
+  };
+
+  /* ---------- desenho ---------- */
+  function computeAndDraw() {
+    const pts = state.points, D = api.design(pts);
+    const m = state.model = App.fit(D, state.P, api);
+    let d = '';
+    painted = false;
+    if (m.ok) {
+      if (state.mode === 1) d = state.show.fit ? curveD(m.f, App.breaks ? App.breaks(m, api) : null) : '';
+      else {
+        if (App.grid) App.grid(m, api, F);
+        else for (let j = 0, q = 0; j < NY; j++) { const y = Y0 + j*HY; for (let i = 0; i < NX; i++, q++) F[q] = m.f(X0 + i*HX, y); }
+        painted = true;
+        if (state.show.fit) d = App.bounds2 ? App.bounds2(m, api) : levelLines(F, m.f, !!App.exact2);
+      }
+    }
+    refreshVar();
+    drawVar();
+    if (App.draw) App.draw(m, api); else api.extra.textContent = '';
+    paint();
+    refreshBV();
+    draw3d();
+    $('hyper').setAttribute('d', d);
+    const moved = state.mode === 1 && state.drag >= 0 && state.ghostD !== null && state.ghostD !== d;
+    $('ghost').style.display = moved ? '' : 'none';
+    if (moved) $('ghost').setAttribute('d', state.ghostD);
+    state.ghostShown = moved;
+    // Resíduos (uma variável): segmentos verticais de (xᵢ, yᵢ) até (xᵢ, ŷᵢ), como na Fig. 3.1
+    let rd = '';
+    if (m.ok && state.mode === 1 && state.show.resid) for (const p of pts) { const yh = m.f(p.x); if (Number.isFinite(yh)) rd += `M${px(p.x).toFixed(1)} ${py(p.y).toFixed(1)}V${py(Math.max(Y0 - 3, Math.min(Y1 + 3, yh))).toFixed(1)}`; }
+    $('resid').setAttribute('d', rd);
+    const rings = (App.rings && m.ok) ? App.rings(m, api) : null;
+    pts.forEach((p, i) => {
+      const nd = nodes[i], x = px(p.x), y = py(p.y), active = i === state.drag || i === state.sel;
+      attrs(nd.dot, { cx: x, cy: y, r: active ? 9 : 7.5 });
+      attrs(nd.ring, { cx: x, cy: y });
+      attrs(nd.hit, { cx: x, cy: y });
+      nd.dot.style.fill = state.mode === 2 ? cssOf(p.v) : '';
+      nd.ring.style.display = rings && rings.has(i) ? '' : 'none';
+      nd.n.setAttribute('aria-label', state.mode === 1 ? `Ponto em (${num(p.x)}; ${num(p.y)})` : `Ponto em (${num(p.x)}; ${num(p.y)}) com y = ${num(p.v)}`);
+    });
+    state.train = errors(m, pts);
+    state.testE = errors(m, state.test);
+    $('pill').textContent = state.train ? `MSE de treino ${num(state.train.mse, 3)}` : 'Sem ajuste';
+    dataLine(m);
+    if (App.panel) App.panel(m, api);
+    const code = App.code(m, api);
+    $('code-r').textContent = code.r;
+    $('code-py').textContent = code.py;
+    $('s-legend').hidden = state.mode !== 2;
+    updateProbe();
+    narrate();
+  }
+
+  function narrate() {
+    const s = state.model, say = $('say'), pts = state.points;
+    if (!s) return;
+    say.className = 'say';
+    if (s.warn) { say.className = 'say warn'; say.innerHTML = `<span>${s.warn}</span>`; return; }
+    if (state.flash) { say.innerHTML = `<span>${state.flash}</span>`; return; }
+    const extra = App.narrate && s.ok ? App.narrate(s, api) : '';
+    if (extra) { say.innerHTML = `<span>${extra}</span>`; return; }
+    const i = state.drag >= 0 ? state.drag : state.sel;
+    if (i >= 0 && pts[i]) {
+      say.innerHTML = `<span>${s.ok ? App.sayPoint(s, i, api) : api.pointText(i)}${state.ghostShown ? ' A curva cinza é o ajuste antes do arraste.' : ''}</span>`;
+      return;
+    }
+    if (state.probe && App.probe && s.ok) {
+      say.innerHTML = `<span>${App.probe(s, state.probe.x, state.probe.y, api)}${state.mode === 1 ? varAt(state.probe.x) : ''}</span>`;
+      return;
+    }
+    if (state.tool === 'add') say.textContent = state.mode === 1 ? 'Clique no gráfico para adicionar um ponto.' : 'Clique no gráfico para adicionar um ponto; o y dele começa igual ao ŷ do lugar. Use "Mudar y" para alterá-lo.';
+    else if (state.tool === 'remove') say.textContent = 'Clique em um ponto para removê-lo.';
+    else if (state.tool === 'yedit') say.textContent = 'Arraste um ponto para cima ou para baixo para mudar o y dele (a posição não muda). No teclado: PageUp e PageDown.';
+    else say.textContent = (s.note ? s.note + ' ' : '') + App.hint(s, api);
+  }
+  // Marcador em (x₀, f̂(x₀)) sob o cursor, com uma variável; o resto da sondagem é de cada app.
+  function updateProbe() {
+    const m = state.model, mk = $('probe-m');
+    mk.style.display = 'none';
+    if (m && m.ok && state.mode === 1 && state.probe) {
+      const v = m.f(state.probe.x);
+      if (Number.isFinite(v) && v > Y0 && v < Y1) { attrs(mk, { cx: px(state.probe.x), cy: py(v) }); mk.style.display = ''; }
+    }
+    if (App.probeDraw && m) App.probeDraw(m, state.probe, api);
+  }
+
+  let queued = false;
+  function render() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; computeAndDraw(); });
+  }
+
+  /* ---------- interação com os pontos ---------- */
+  function toData(ev) {
+    const m = svg.getScreenCTM().inverse();
+    const q = new DOMPoint(ev.clientX, ev.clientY).matrixTransform(m);
+    return { sx: q.x, sy: q.y, x: X0 + (q.x - ML)/S, y: Y1 - (q.y - MT)/S };
+  }
+  const PAD = 0.03;
+  const clampX = x => Math.max(X0 + PAD, Math.min(X1 - PAD, x));
+  const clampY = y => Math.max(Y0 + PAD, Math.min(Y1 - PAD, y));
+  const inPlot = d => d.x >= X0 && d.x <= X1 && d.y >= Y0 && d.y <= Y1;
+  function nearestPoint(d) {
+    const R = coarse ? 26 : 17;
+    let best = -1, bd = R;
+    state.points.forEach((p, i) => { const v = Math.hypot(px(p.x) - d.sx, py(p.y) - d.sy); if (v < bd) { bd = v; best = i; } });
+    return best;
+  }
+  function startDrag(i, ev, d) {
+    state.drag = i; state.sel = i; state.flash = ''; state.probe = null;
+    state.ydrag = state.tool === 'yedit' ? { sy: d.sy, v: state.points[i].v } : null;
+    state.ghostD = $('hyper').getAttribute('d') || '';
+    svg.classList.add('dragging');
+    try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
+    ev.preventDefault();
+  }
+  function changed() { state.flash = ''; state.edited = true; }
+  function removePoint(i) {
+    if (state.points.length <= 2) {
+      state.flash = 'São precisos pelo menos dois pontos.';
+      render();
+      return;
+    }
+    state.points.splice(i, 1);
+    state.sel = -1; changed();
+    buildPoints();
+    if (App.dataChanged) App.dataChanged(api);
+    render();
+  }
+  svg.addEventListener('pointerdown', ev => {
+    if (ev.button !== 0) return;
+    const d = toData(ev), i = nearestPoint(d);
+    if ((state.tool === 'move' || state.tool === 'yedit') && i >= 0) { startDrag(i, ev, d); nodes[i].n.focus({ preventScroll: true }); render(); }
+    else if (state.tool === 'remove' && i >= 0) { ev.preventDefault(); removePoint(i); }
+    else if (state.tool === 'add' && inPlot(d)) {
+      if (state.mode === 1) state.points.push({ x: clampX(d.x), y: clampY(d.y) });
+      else {
+        // O y do ponto novo começa no ŷ daquele lugar (ou na média dos y), arredondado a 0,05
+        const m = state.model, v0 = m && m.ok ? m.f(d.x, d.y) : state.points.reduce((s, p) => s + p.v, 0)/state.points.length;
+        state.points.push({ x: clampX(d.x), y: clampY(d.y), v: clampR(2, Math.round(v0*20)/20) });
+      }
+      changed();
+      buildPoints();
+      if (App.dataChanged) App.dataChanged(api);
+      startDrag(state.points.length - 1, ev, d);
+      render();
+    }
+  });
+  svg.addEventListener('pointermove', ev => {
+    if (state.drag < 0) {
+      if (ev.pointerType === 'mouse') {
+        const d = toData(ev), i = nearestPoint(d);
+        if (i !== state.sel && (i >= 0 || state.sel >= 0)) { state.sel = i; render(); }
+        const pr = i < 0 && inPlot(d) ? { x: d.x, y: d.y } : null;
+        if (pr || state.probe) { state.probe = pr; updateProbe(); narrate(); }
+      }
+      return;
+    }
+    const d = toData(ev), p = state.points[state.drag];
+    if (state.ydrag) p.v = clampR(2, state.ydrag.v + (state.ydrag.sy - d.sy)/S);
+    else { p.x = clampX(d.x); p.y = clampY(d.y); }
+    changed();
+    render();
+  });
+  const endDrag = () => {
+    if (state.drag < 0) return;
+    state.drag = -1; state.ghostD = null; state.ydrag = null;
+    svg.classList.remove('dragging');
+    render();
+  };
+  svg.addEventListener('pointerup', endDrag);
+  svg.addEventListener('pointercancel', endDrag);
+  svg.addEventListener('touchmove', ev => { if (state.drag >= 0) ev.preventDefault(); }, { passive: false });
+  svg.addEventListener('pointerleave', () => {
+    let ch = false;
+    if (state.probe) { state.probe = null; updateProbe(); ch = true; }
+    if (state.drag < 0 && state.sel >= 0 && document.activeElement?.dataset?.i === undefined) { state.sel = -1; render(); }
+    else if (ch) narrate();
+  });
+  // Teclado: setas movem o ponto focado (Shift = passo maior); PageUp/PageDown (ou + e −) mudam a resposta y; Delete remove.
+  svg.addEventListener('keydown', ev => {
+    const a = ev.target.getAttribute?.('data-i');
+    if (a === null || a === undefined) return;
+    const i = Number(a);
+    if (!state.points[i]) return;
+    const step = ev.shiftKey ? 0.25 : 0.05, p = state.points[i];
+    const dir = { ArrowLeft: [-1,0], ArrowRight: [1,0], ArrowUp: [0,1], ArrowDown: [0,-1] }[ev.key];
+    const dv = { PageUp: 1, PageDown: -1, '+': 1, '=': 1, '-': -1 }[ev.key];
+    if (dir) { p.x = clampX(p.x + dir[0]*step); p.y = clampY(p.y + dir[1]*step); }
+    else if (dv) { if (state.mode === 1) p.y = clampY(p.y + dv*step); else p.v = clampR(2, p.v + dv*step); }
+    else if (ev.key === 'Delete' || ev.key === 'Backspace') { ev.preventDefault(); removePoint(i); return; }
+    else return;
+    state.sel = i; changed();
+    ev.preventDefault();
+    render();
+  });
+  svg.addEventListener('focusin', ev => {
+    const a = ev.target.getAttribute?.('data-i');
+    if (a !== null && a !== undefined && state.drag < 0) { state.sel = Number(a); render(); }
+  });
+
+  /* ---------- controles ---------- */
+  const toolButtons = [...document.querySelectorAll('#tools button')];
+  function setTool(t) {
+    state.tool = t;
+    toolButtons.forEach(o => o.setAttribute('aria-pressed', String(o.dataset.tool === t)));
+    svg.setAttribute('data-tool', t);
+    state.sel = -1; state.flash = '';
+  }
+  toolButtons.forEach(b => b.addEventListener('click', () => { setTool(b.dataset.tool); render(); }));
+  function fillSelect() {
+    const sel = $('dataset');
+    sel.textContent = '';
+    for (const [k, D] of Object.entries(DATA[state.mode])) {
+      const o = document.createElement('option');
+      o.value = k;
+      o.textContent = `Dados: ${D.label} · n = ${loadData(state.mode, k, 0).length}`;
+      sel.appendChild(o);
+    }
+    sel.value = state.dataset;
+  }
+  function syncNoise() {
+    if (document.activeElement !== $('p-noise-n')) $('p-noise-n').value = state.sigma;
+    if (document.activeElement !== $('p-noise')) $('p-noise').value = state.sigma;
+    const fixed = isFixed(state.mode, state.dataset);
+    $('p-noise').disabled = $('p-noise-n').disabled = fixed;
+    $('o-test').disabled = fixed;
+    $('c-test').classList.toggle('off', fixed);
+  }
+  function setData(name, flash = '', sigma) {
+    state.dataset = name;
+    state.sigma = sigma === undefined ? sigmaOf(state.mode, name) : sigma;
+    state.points = loadData(state.mode, name, state.sigma);
+    state.sel = -1; state.drag = -1; state.ghostD = null; state.flash = flash; state.probe = null; state.edited = false;
+    syncNoise();
+    refreshTest();
+    refreshTrue();
+    buildPoints();
+    if (App.dataChanged) App.dataChanged(api);
+    render();
+  }
+  $('dataset').addEventListener('change', e => setData(e.target.value));
+  $('reset').addEventListener('click', () => setData(state.dataset));
+  // Ruído: mesmos x e mesmos zᵢ, só a escala do erro muda (edições à mão se perdem, e a narração avisa)
+  const setNoise = v => {
+    if (v === state.sigma) return;
+    const edited = state.edited;
+    setData(state.dataset, `Ruído σ = ${num(v)}: yᵢ = f(xᵢ) + σ·zᵢ, com os mesmos xᵢ e zᵢ${edited ? '; as edições feitas à mão foram descartadas' : ''}.`, v);
+  };
+  $('p-noise').addEventListener('input', e => setNoise(Number(e.target.value)));
+  $('p-noise-n').addEventListener('input', e => { const v = parseFloat(String(e.target.value).replace(',', '.')); if (Number.isFinite(v) && v >= 0 && v <= 1) setNoise(v); });
+  $('p-noise-n').addEventListener('blur', () => { $('p-noise-n').value = state.sigma; });
+  $('o-test').checked = $('o-truef').checked = false; // o navegador pode restaurar caixas marcadas ao recarregar
+  $('o-test').addEventListener('change', e => { state.show.test = e.target.checked; refreshTest(); render(); });
+  $('o-truef').addEventListener('change', e => { state.show.truef = e.target.checked; refreshTrue(); render(); });
+  $('o-var').checked = false;
+  $('o-var').addEventListener('change', e => { state.show.var = e.target.checked; render(); });
+  // Uma ou duas variáveis: cada modo guarda os próprios pontos e o conjunto escolhido
+  const modeButtons = [...document.querySelectorAll('#vseg button')];
+  function setMode(k) {
+    if (k === state.mode) return;
+    store[state.mode] = { dataset: state.dataset, sigma: state.sigma, points: state.points, edited: state.edited };
+    state.mode = k;
+    modeButtons.forEach(o => o.setAttribute('aria-pressed', String(Number(o.dataset.mode) === k)));
+    svg.setAttribute('data-mode', k);
+    $('t-yedit').hidden = k === 1;
+    if (k === 1 && state.tool === 'yedit') setTool('move');
+    $('c-resid').hidden = k === 2;
+    drawAxes();
+    const st = store[k];
+    if (st) {
+      state.dataset = st.dataset; state.sigma = st.sigma; state.points = st.points; state.edited = st.edited;
+      state.sel = -1; state.drag = -1; state.ghostD = null; state.flash = ''; state.probe = null;
+      fillSelect(); syncNoise(); refreshTest(); refreshTrue(); buildPoints();
+      if (App.dataChanged) App.dataChanged(api);
+      if (App.modeChanged) App.modeChanged(api);
+      render();
+    } else {
+      state.dataset = App.datasets[k];
+      fillSelect();
+      if (App.modeChanged) App.modeChanged(api);
+      setData(state.dataset);
+    }
+  }
+  modeButtons.forEach(b => b.addEventListener('click', () => setMode(Number(b.dataset.mode))));
+  api.setData = setData;
+  const copy = (btn, id) => $(btn).addEventListener('click', () => {
+    const text = $(id).textContent, b = $(btn);
+    const done = () => { b.textContent = 'Copiado'; setTimeout(() => { b.textContent = 'Copiar'; }, 1400); };
+    const fallback = () => {
+      const r = document.createRange(); r.selectNodeContents($(id));
+      const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      b.textContent = 'Selecionado'; setTimeout(() => { b.textContent = 'Copiar'; }, 1400);
+    };
+    try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+  });
+  // Gancho para os testes automáticos (testes/t_nav.py): estado e API da casca
+  window.__regr = { state, api, DATA, loadData, desenha: () => computeAndDraw(), draw3d, evalSet, bv: () => bv, vari: () => vari, pontos: pts => { state.points = pts; state.sel = state.drag = -1; buildPoints(); if (App.dataChanged) App.dataChanged(api); } };
+  copy('copy-r', 'code-r');
+  copy('copy-py', 'code-py');
+  document.querySelectorAll('input[data-show]').forEach(inp => inp.addEventListener('change', e => { state.show[e.target.dataset.show] = e.target.checked; render(); }));
+
+  // Tema e tamanho
+  const refresh = () => { readColors(); buildTest(); render(); };
+  if (window.matchMedia) matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', refresh);
+  new MutationObserver(refresh).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+  if (window.ResizeObserver) new ResizeObserver(() => { if (colors && state.model && fitCanvas()) paint(); }).observe(cv);
+
+  if (App.init) App.init(api);
+  readColors();
+  drawAxes();
+  fillSelect();
+  syncNoise();
+  $('c-resid').hidden = false;
+  refreshTrue();
+  buildPoints();
+  if (App.startMode === 2) setMode(2); else computeAndDraw();
+})();
+</script>
+</body>
+</html>
