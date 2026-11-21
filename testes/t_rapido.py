@@ -47,6 +47,8 @@ def confere_knn(pg):
     """Com uma variável, a vizinhança desenhada (linhas tracejadas) tem a mesma largura com p = 1, 2 e 3."""
     pg.click('#vseg button[data-mode="1"]')
     espera_quadro(pg)
+    pg.locator('#plot').scroll_into_view_if_needed()
+    espera_quadro(pg)
     box = pg.locator('#plot').bounding_box()
     pg.mouse.move(box['x'] + 300 * box['width'] / 602, box['y'] + 300 * box['width'] / 602)
     larg = {}

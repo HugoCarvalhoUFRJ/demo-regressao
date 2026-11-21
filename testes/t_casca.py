@@ -1,6 +1,8 @@
 """Confere se a casca dos apps de regressão é idêntica à do knn.html (referência). Com 'aplicar', copia a casca do knn para os outros.
 Uso: python t_casca.py [aplicar]
-Regiões da casca: script do tema, CSS, barra e linha dos dados, narração e gráfico, primeira seção do painel e seção de código, e o script da casca.
+Regiões da casca: script do tema, CSS, barra e linha dos dados (na lateral), modelo ajustado e legenda das cores (até <!--APP-LATERAL-->),
+botão e caixa do código, narração e cartões dos dados e do 3D (até <!--APP-CELULAS-->), cartão de viés e variância (depois de <!--APP-CELULAS-FIM-->)
+e o script da casca.
 """
 import sys
 
@@ -11,10 +13,10 @@ APPS = [a for a in ['linear', 'penalizada', 'knn', 'arvore', 'floresta', 'boosti
 REGIOES = {
     'tema': ('<script>\n// O tema', '</script>'),
     'css': ('<style>\n/* Layout', '</style>'),
-    'barra': ('    <div class="bar">', '\n    <div class="params">'),
-    'grafico': ('    <div id="say"', '  </main>'),
-    'painel': ('  <aside>', '    <section>\n      <p class="lab" id="v-rulelab">'),
-    'codigo': ('    <section>\n      <p class="lab">Mesmo modelo em código</p>', '  </aside>'),
+    'barra': ('  <aside>\n    <div class="bar">', '\n    <div class="params">'),
+    'painel': ('    <section id="s-fit">', '    <!--APP-LATERAL-->'),
+    'codigo': ('    <section id="s-code">', '      <!--APP-CELULAS-->'),
+    'viesvar': ('      <!--APP-CELULAS-FIM-->', '\n</div>\n\n<script>'),
     'script': ('(() => {\n  const X0 = -1.73', None),
 }
 
@@ -60,6 +62,10 @@ def aplica():
         if app == REF:
             continue
         s = (PROJ / f'{app}.html').read_text(encoding='utf-8')
+        falta = [n for n, (ini, fim) in REGIOES.items() if ini not in s or (fim is not None and fim not in s)]
+        if falta:
+            print(f'{app}: sem as marcas da casca ({", ".join(falta)}); não aplicado')
+            continue
         for nome, (ini, fim) in REGIOES.items():
             a, b = trecho(ref, ini, fim)
             c, d = trecho(s, ini, fim)

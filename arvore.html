@@ -25,7 +25,8 @@ img{max-width:100%}
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400&family=IBM+Plex+Sans:wght@400;500;600&family=STIX+Two+Text:ital,wght@0,400;0,600;1,400;1,600&display=swap" media="print" onload="this.media='all'">
 <style>
-/* Layout: o gráfico ocupa a tela como numa aula projetada, com os parâmetros logo acima; à direita, o modelo ajustado. */
+/* Layout: à esquerda, uma coluna fina com os controles e os números; no centro, a grade de gráficos (dados, 3D, gráficos do método,
+   viés e variância), dimensionada para caber inteira na tela, como numa aula projetada. Textos longos ficam atrás dos botões ⓘ. */
 :root {
   --paper: #fbfbfe; --plot: #ffffff; --ink: #15151f; --muted: #5d5d72; --rule: #d8d8e6; --tint: #eeeef6;
   --blue: #1596e4; --pt: #1c74c9; --orange: #d9640a; --pink: #c544b8;
@@ -60,12 +61,57 @@ body {
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 14px 20px;
 }
-.app { display: grid; gap: 12px 28px; max-width: 1320px; margin-inline: auto; grid-template-columns: minmax(0, 1fr) 330px; grid-template-areas: "head head" "main side"; }
+.app { display: grid; gap: 10px 18px; max-width: 1900px; margin-inline: auto; grid-template-columns: 312px minmax(0, 1fr); grid-template-areas: "head head" "side main"; }
 header { grid-area: head; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 16px; }
 h1 { font: 600 clamp(1.4rem, 2.4vw, 1.75rem)/1.15 var(--math); margin: 0; text-wrap: balance; }
 header p { margin: 0; color: var(--muted); }
-main { grid-area: main; min-width: 0; display: grid; gap: 8px; align-content: start; }
-aside { grid-area: side; min-width: 0; display: grid; gap: 16px; align-content: start; }
+main { grid-area: main; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+aside { grid-area: side; min-width: 0; display: grid; gap: 14px; align-content: start; position: sticky; top: 8px; z-index: 5; max-height: calc(100dvh - 86px); overflow-y: auto; padding: 2px 6px 8px 2px; scrollbar-width: thin; }
+aside { grid-template-columns: minmax(0, 1fr); overflow-x: hidden; }
+aside .chk { white-space: normal; }
+aside .bar, aside .bar .left, aside .acts { justify-content: flex-start; }
+aside .acts { flex-basis: 100%; }
+aside .acts select { max-width: none; }
+aside .seg button { padding: 8px 10px; }
+/* Variáveis e ferramentas: cada grupo numa linha só, na largura da coluna, com botões iguais */
+aside .bar .left { flex-direction: column; align-items: stretch; width: 100%; }
+aside .bar .seg { display: flex; flex-wrap: nowrap; width: 100%; }
+aside .bar .seg button { flex: 1 1 0; min-width: 0; justify-content: center; padding: 8px 4px; white-space: nowrap; }
+aside .params, aside .datarow { gap: 6px 14px; }
+aside .ctl, aside .ctl.wide, aside .datarow .ctl { flex: 1 1 100%; max-width: none; }
+/* Grade de gráficos, na altura da tela. As posições vêm do script (layoutCells): com uma variável, os dados à esquerda na
+   altura toda e os outros gráficos empilhados à direita; com duas, o mapa e o 3D numa linha de cima mais alta e os outros embaixo. */
+:root { --avail: max(560px, calc(100dvh - 136px)); --mainw: min(52%, calc(var(--avail) * .9586 + 10px)); }
+.cells { display: grid; gap: 10px; height: var(--avail); grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
+.card { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 4px; background: var(--plot); border: 1px solid var(--rule); border-radius: 9px; padding: 7px 10px 8px; overflow: hidden; }
+
+.card-h { display: flex; align-items: center; gap: 8px; min-height: 26px; }
+.card-h .lab { margin: 0; min-width: 0; }
+.card-h .copy { margin-left: auto; }
+.card-b { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+.card-b > .mini, .card-b > .fill { flex: 1 1 0; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+.card-b > .eq, .card-b > .note, .card-b > .ktab, .card-b > .coef { align-self: stretch; }
+.card-main .card-b { container-type: size; }
+/* Diagrama da árvore num cartão: rola quando não cabe, centrado quando cabe */
+.card-b > .scrollbox { flex: 1 1 0; min-height: 0; width: 100%; border: 0; display: flex; }
+.card-b > .scrollbox > svg { margin: auto; flex: none; }
+h2.lab, h3.lab { font-weight: 500; }
+/* Botão ⓘ e balão com o texto explicativo */
+.info { flex: none; width: 22px; height: 22px; min-height: 0; padding: 0; border-radius: 50%; justify-content: center; font: italic 600 13px/1 var(--math); color: var(--muted); border: 1.5px solid currentColor; background: transparent; }
+.info:hover, .info[aria-expanded="true"] { color: var(--ink); background: var(--tint); }
+.pop { position: fixed; z-index: 30; left: 0; top: 0; width: max-content; max-width: min(430px, calc(100vw - 24px)); max-height: min(70dvh, 540px); overflow-y: auto; background: var(--plot); color: var(--ink); border: 1px solid var(--rule); border-radius: 9px; padding: 10px 13px; box-shadow: 0 8px 28px rgb(0 0 0 / .2); font-size: 13.5px; line-height: 1.45; text-transform: none; letter-spacing: normal; }
+.pop .note { color: var(--ink); margin: 0; font-size: 13.5px; }
+.pop .note + .note, .pop .note + dl, .pop dl + .note { margin-top: 7px; }
+.pop dl { margin: 0; }
+.pop dt { font-weight: 600; margin-top: 7px; }
+.pop dt:first-child { margin-top: 0; }
+.pop dd { margin: 2px 0 0; }
+/* Caixa com o código em R e em Python */
+#code-open { width: 100%; justify-content: center; }
+dialog#code-dlg { width: min(880px, calc(100vw - 32px)); max-height: calc(100dvh - 40px); border: 1px solid var(--rule); border-radius: 10px; background: var(--paper); color: var(--ink); padding: 12px 16px 16px; }
+dialog#code-dlg::backdrop { background: rgb(0 0 0 / .4); }
+.dlg-h { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+.dlg-h .lab { margin: 0; flex: 1; }
 .bar { display: flex; flex-wrap: wrap; gap: 8px 12px; justify-content: space-between; align-items: center; }
 .bar .left { display: flex; flex-wrap: wrap; gap: 8px; }
 .seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--rule); border-radius: 7px; overflow: hidden; background: var(--plot); }
@@ -91,7 +137,7 @@ button:disabled { opacity: .5; cursor: default; }
 .say { min-height: 3.1em; display: flex; align-items: center; gap: 9px; padding: 6px 12px; border-radius: 7px; background: var(--tint); line-height: 1.3; }
 .say.warn { background: var(--warn-tint); color: var(--warn); font-weight: 500; }
 .say .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.plotwrap { position: relative; aspect-ratio: 602 / 628; margin-inline: auto; max-width: 100%; width: max(min(100%, 360px), min(100%, calc((100dvh - 325px) * 0.9586))); }
+.plotwrap { position: relative; aspect-ratio: 602 / 628; margin-inline: auto; max-width: 100%; width: min(100cqw, 100cqh * 0.9586); }
 #cv { position: absolute; left: calc(54 / 602 * 100%); top: calc(8 / 628 * 100%); width: calc(525 / 602 * 100%); height: calc(552 / 628 * 100%); display: block; }
 svg#plot { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: pan-y; user-select: none; -webkit-user-select: none; }
 svg#plot[data-tool="add"] { touch-action: none; cursor: crosshair; }
@@ -195,18 +241,20 @@ details.ties summary:focus-visible { outline: 2px solid var(--blue); outline-off
 .ties dl { margin: 6px 0 0; font-size: 13.5px; line-height: 1.4; }
 .ties dt { font-weight: 600; margin-top: 6px; }
 .ties dd { margin: 2px 0 0; }
-/* Gráfico 3D (duas variáveis), abaixo do mapa e com a mesma largura */
-.s3d { margin: 10px auto 0; max-width: 100%; width: max(min(100%, 360px), min(100%, calc((100dvh - 325px) * 0.9586))); }
-.s3d .head-row { align-items: center; margin-bottom: 4px; }
-.s3d .lab { margin: 0; }
-#cv3d { display: block; width: 100%; aspect-ratio: 602 / 480; background: var(--plot); border: 1px solid var(--rule); border-radius: 7px; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+/* Gráfico 3D (duas variáveis): ocupa o cartão ao lado do mapa */
+#cv3d { display: block; width: 100%; flex: 1 1 0; min-height: 0; background: var(--plot); border-radius: 7px; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
 #cv3d.dragging { cursor: grabbing; }
 #cv3d:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
 /* Viés² e variância: aviso de cálculo em andamento */
 .bvwait { fill: var(--muted); font: 400 12.5px var(--ui); }
 @media (max-width: 900px) {
-  .app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "main" "side"; }
-  .plotwrap, .s3d { width: 100%; }
+  .app { grid-template-columns: minmax(0, 1fr); grid-template-areas: "head" "side" "main"; }
+  aside { position: static; max-height: none; overflow: visible; padding: 0; }
+  .cells { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; height: auto; }
+  .card-main .card-b { container-type: normal; }
+  .card-b, .card-b > .mini, .card-b > .fill, .card-b > .scrollbox { flex: none; }
+  .plotwrap { width: 100%; }
+  #cv3d { flex: none; aspect-ratio: 602 / 480; }
 }
 @media (max-width: 480px) {
   .seg button { padding: 9px 9px; font-size: 13px; }
@@ -223,7 +271,7 @@ details.ties summary:focus-visible { outline: 2px solid var(--blue); outline-off
     <p>Arraste os pontos e veja a partição, as médias das folhas e a poda mudarem a cada movimento.</p>
   </header>
 
-  <main>
+  <aside>
     <div class="bar">
       <div class="left">
         <div class="seg" role="group" aria-label="Número de variáveis preditoras" id="vseg">
@@ -252,45 +300,9 @@ details.ties summary:focus-visible { outline: 2px solid var(--blue); outline-off
     <div class="params"><div class="ctl wide"><label class="word" for="p-depth-n">Profundidade máx.</label><input id="p-depth-n" type="number" min="1" max="30" step="1" placeholder="sem" aria-label="Profundidade máxima (vazio: sem limite)"><input id="p-depth" type="range" min="1" max="13" step="1" aria-label="Profundidade máxima; o último valor é sem limite"></div>
       <div class="ctl wide"><label class="word" for="p-leaf-n">Mínimo por folha</label><input id="p-leaf-n" type="number" min="1" max="20" step="1"><input id="p-leaf" type="range" min="1" max="20" step="1" aria-label="Mínimo de pontos por folha"></div>
       <div class="ctl"><label for="p-alpha-n">α</label><input id="p-alpha-n" type="number" min="0" max="1000" step="0.01" inputmode="decimal"><input id="p-alpha" type="range" min="0" max="3" step="0.01" aria-label="Parâmetro de poda alfa da Eq. (8.4)"></div></div>
-
-    <div id="say" class="say" role="status" aria-live="polite"></div>
-
-    <div class="plotwrap">
-      <canvas id="cv" aria-hidden="true"></canvas>
-      <svg id="plot" viewBox="0 0 602 628" data-tool="move" data-mode="1" aria-label="Gráfico dos dados com o ajuste da regressão. Os pontos podem ser arrastados.">
-        <defs><clipPath id="clip"><rect id="cliprect"></rect></clipPath></defs>
-        <g clip-path="url(#clip)">
-          <g id="layer-extra"></g>
-          <path id="resid" class="resid"></path>
-          <path id="varp" class="curve varc"></path>
-          <path id="varm" class="curve varm"></path>
-          <path id="truef" class="curve truef"></path>
-          <path id="ghost" class="curve ghost"></path>
-          <path id="hyper" class="curve hyper"></path>
-          <path id="highlight" class="curve hl"></path>
-          <circle id="probe-c" class="probe" style="display:none"></circle>
-          <path id="probe-p" class="probe" style="display:none"></path>
-          <circle id="probe-m" class="probem" r="6" style="display:none"></circle>
-        </g>
-        <rect class="frame" id="frame"></rect>
-        <g id="axes"></g>
-        <g id="layer-test"></g>
-        <g id="layer-points"></g>
-      </svg>
-    </div>
-    <section class="s3d" id="s-3d" hidden>
-      <div class="head-row">
-        <p class="lab" id="v3d-lab">Superfície ajustada em 3D</p>
-        <button class="copy" id="v3d-reset">Vista inicial</button>
-      </div>
-      <canvas id="cv3d" tabindex="0" role="img" aria-label="Superfície ajustada em três dimensões. Use as setas para girar."></canvas>
-      <p class="note" id="v3d-note"></p>
-    </section>
-  </main>
-
-  <aside>
-    <section>
-      <p class="lab">Modelo ajustado</p>
+    <section id="s-fit">
+      <div class="card-h"><h2 class="lab">Modelo ajustado</h2><button class="info" aria-expanded="false" aria-controls="pop-data" aria-label="Sobre o erro de treino e de teste">i</button></div>
+      <div class="pop" id="pop-data" hidden><p class="note" id="v-datanote"></p></div>
       <div class="head-row">
         <div class="bigM" id="v-title" style="font-size:1.25rem"></div>
         <span id="pill" class="pill"></span>
@@ -298,25 +310,26 @@ details.ties summary:focus-visible { outline: 2px solid var(--blue); outline-off
       <div id="v-data"></div>
     </section>
     <section class="legend" id="s-legend" hidden>
-      <p class="lab">Cores: valores de <span class="math"><i>y</i></span> e de <span class="math"><i>ŷ</i></span></p>
+      <div class="card-h"><h2 class="lab">Cores: valores de <span class="math"><i>y</i></span> e de <span class="math"><i>ŷ</i></span></h2><button class="info" aria-expanded="false" aria-controls="pop-legend" aria-label="Sobre as cores">i</button></div>
+      <div class="pop" id="pop-legend" hidden><p class="note">O fundo mostra <span class="math"><i>ŷ</i></span> em faixas de 0,5; cada ponto tem a cor do seu <span class="math"><i>y</i></span>. Um ponto da mesma cor do fundo está bem ajustado.</p></div>
       <div id="v-legend"></div>
-      <p class="note">O fundo mostra <span class="math"><i>ŷ</i></span> em faixas de 0,5; cada ponto tem a cor do seu <span class="math"><i>y</i></span>. Um ponto da mesma cor do fundo está bem ajustado.</p>
     </section>
-    <section id="s-bv" hidden>
-      <p class="lab">Viés e variância, como na Fig. 2.12</p>
-      <div id="v-bv" class="mini" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-label="Viés ao quadrado, variância e MSE de teste esperado contra o parâmetro. Clique ou use as setas para escolher o valor."></div>
-      <p class="note" id="v-bvnote"></p>
-    </section>
+    <!--APP-LATERAL-->
     <section>
-      <p class="lab" id="v-rulelab">Árvore ajustada</p>
-      <div class="scrollbox" id="v-tree" tabindex="0" role="group" aria-label="Diagrama da árvore"></div>
-      <p class="note">Cada folha mostra a média <i>ŷ<sub>R<sub>m</sub></sub></i> dos seus pontos e quantos são. Passe o mouse no gráfico: o ramo da raiz até a folha daquela posição acende aqui. Passe o mouse (ou toque) num nó para ver a região dele no gráfico.</p>
-    </section>
-    <section>
-      <p class="lab">Como a árvore cresce e é podada</p>
+      <div class="card-h"><h2 class="lab">Como a árvore cresce e é podada</h2><button class="info" aria-expanded="false" aria-controls="pop-rule" aria-label="Sobre o crescimento, a poda e os desempates">i</button></div>
+      <div class="pop" id="pop-rule" hidden>
+        <p class="note" id="v-rulenote">Divisão binária recursiva (Algoritmo 8.1): em cada nó, o corte <i>X<sub>j</sub></i> ≤ <i>s</i> que mais reduz o RSS, como na Eq. (8.3); o livro escreve &lt; <i>s</i> à esquerda, o scikit-learn e este app mandam ≤ <i>s</i>. O <i>α</i> poda pela Eq. (8.4). No scikit-learn ele é <code>ccp_alpha</code> = <i>α</i>/<i>n</i>, porque lá o custo de cada folha é o RSS dela dividido por <i>n</i>: as duas formas dão a mesma árvore.</p>
+        <dl>
+          <dt>Desempates neste app</dt>
+          <dd>Divisões com a mesma redução do RSS: X<sub>1</sub> antes de X<sub>2</sub> e, no mesmo atributo, o menor limiar. Divide mesmo quando a melhor divisão não reduz o RSS (ganho zero), salvo num nó com todos os <i>y</i> iguais.</dd>
+          <dt>scikit-learn</dt>
+          <dd>A cada nó, os atributos são visitados numa ordem sorteada (depende de <code>random_state</code>): num empate entre X<sub>1</sub> e X<sub>2</sub>, qualquer um pode vencer. No mesmo atributo, o menor limiar.</dd>
+          <dt>R, <code>rpart</code></dt>
+          <dd>Empate entre atributos: o que vem primeiro na fórmula (com <code>y ~ .</code>, X<sub>1</sub>). Não divide quando nenhuma divisão reduz o RSS, mesmo com <code>cp = -1</code>.</dd>
+        </dl>
+      </div>
       <p class="eq">RSS = Σ<sub><i>j</i></sub> Σ<sub><i>i</i>∈<i>R<sub>j</sub></i></sub> (<i>y<sub>i</sub></i> − <i>ŷ<sub>R<sub>j</sub></sub></i>)² &nbsp;(8.1)</p>
       <p class="eq">Σ<sub><i>m</i></sub> Σ<sub><i>i</i>: <i>x<sub>i</sub></i>∈<i>R<sub>m</sub></i></sub> (<i>y<sub>i</sub></i> − <i>ŷ<sub>R<sub>m</sub></sub></i>)² + <i>α</i>|<i>T</i>| &nbsp;(8.4)</p>
-      <p class="note" id="v-rulenote">Divisão binária recursiva (Algoritmo 8.1): em cada nó, o corte <i>X<sub>j</sub></i> ≤ <i>s</i> que mais reduz o RSS, como na Eq. (8.3); o livro escreve &lt; <i>s</i> à esquerda, o scikit-learn e este app mandam ≤ <i>s</i>. O <i>α</i> poda pela Eq. (8.4). No scikit-learn ele é <code>ccp_alpha</code> = <i>α</i>/<i>n</i>, porque lá o custo de cada folha é o RSS dela dividido por <i>n</i>: as duas formas dão a mesma árvore.</p>
     </section>
 
     <section>
@@ -328,29 +341,68 @@ details.ties summary:focus-visible { outline: 2px solid var(--blue); outline-off
           <svg width="30" height="14" aria-hidden="true"><line x1="8" y1="2" x2="8" y2="12" stroke="var(--muted)" stroke-width="1.8"></line><line x1="20" y1="4" x2="20" y2="11" stroke="var(--muted)" stroke-width="1.8"></line></svg><span>Resíduos</span></label>
       </div>
     </section>
-
-    <section>
-      <details class="ties">
-        <summary>Desempates</summary>
-        <dl>
-          <dt>Este app</dt>
-          <dd>Divisões com a mesma redução do RSS: X<sub>1</sub> antes de X<sub>2</sub> e, no mesmo atributo, o menor limiar. Divide mesmo quando a melhor divisão não reduz o RSS (ganho zero), salvo num nó com todos os <i>y</i> iguais.</dd>
-          <dt>scikit-learn</dt>
-          <dd>A cada nó, os atributos são visitados numa ordem sorteada (depende de <code>random_state</code>): num empate entre X<sub>1</sub> e X<sub>2</sub>, qualquer um pode vencer. No mesmo atributo, o menor limiar.</dd>
-          <dt>R, <code>rpart</code></dt>
-          <dd>Empate entre atributos: o que vem primeiro na fórmula (com <code>y ~ .</code>, X<sub>1</sub>). Não divide quando nenhuma divisão reduz o RSS, mesmo com <code>cp = -1</code>.</dd>
-        </dl>
-      </details>
-    </section>
-
-    <section>
-      <p class="lab">Mesmo modelo em código</p>
-      <p class="codehead" id="v-rhead">R</p>
-      <div class="code"><code id="code-r"></code><button class="copy" id="copy-r">Copiar</button></div>
-      <p class="codehead" style="margin-top:8px" id="v-pyhead">Python, com scikit-learn</p>
-      <div class="code"><code id="code-py"></code><button class="copy" id="copy-py">Copiar</button></div>
+    <section id="s-code">
+      <button id="code-open" aria-haspopup="dialog">Mesmo modelo em código: R e Python</button>
+      <dialog id="code-dlg" aria-labelledby="code-dlg-h">
+        <div class="dlg-h"><h2 class="lab" id="code-dlg-h">Mesmo modelo em código</h2><button class="copy" id="code-close">Fechar</button></div>
+        <p class="codehead" id="v-rhead">R</p>
+        <div class="code"><code id="code-r"></code><button class="copy" id="copy-r">Copiar</button></div>
+        <p class="codehead" style="margin-top:8px" id="v-pyhead">Python, com scikit-learn</p>
+        <div class="code"><code id="code-py"></code><button class="copy" id="copy-py">Copiar</button></div>
+      </dialog>
     </section>
   </aside>
+
+  <main>
+    <div id="say" class="say" role="status" aria-live="polite"></div>
+    <div class="cells" id="cells">
+      <section class="card card-main" id="s-main">
+        <div class="card-h"><h2 class="lab" id="v-mainlab">Dados e ajuste</h2></div>
+        <div class="card-b">
+          <div class="plotwrap">
+            <canvas id="cv" aria-hidden="true"></canvas>
+            <svg id="plot" viewBox="0 0 602 628" data-tool="move" data-mode="1" aria-label="Gráfico dos dados com o ajuste da regressão. Os pontos podem ser arrastados.">
+              <defs><clipPath id="clip"><rect id="cliprect"></rect></clipPath></defs>
+              <g clip-path="url(#clip)">
+                <g id="layer-extra"></g>
+                <path id="resid" class="resid"></path>
+                <path id="varp" class="curve varc"></path>
+                <path id="varm" class="curve varm"></path>
+                <path id="truef" class="curve truef"></path>
+                <path id="ghost" class="curve ghost"></path>
+                <path id="hyper" class="curve hyper"></path>
+                <path id="highlight" class="curve hl"></path>
+                <circle id="probe-c" class="probe" style="display:none"></circle>
+                <path id="probe-p" class="probe" style="display:none"></path>
+                <circle id="probe-m" class="probem" r="6" style="display:none"></circle>
+              </g>
+              <rect class="frame" id="frame"></rect>
+              <g id="axes"></g>
+              <g id="layer-test"></g>
+              <g id="layer-points"></g>
+            </svg>
+          </div>
+        </div>
+      </section>
+      <section class="card" id="s-3d" hidden>
+        <div class="card-h"><h2 class="lab" id="v3d-lab">Superfície ajustada em 3D</h2><button class="info" aria-expanded="false" aria-controls="pop-3d" aria-label="Sobre o gráfico 3D">i</button><button class="copy" id="v3d-reset">Vista inicial</button></div>
+        <div class="pop" id="pop-3d" hidden><p class="note" id="v3d-note"></p></div>
+        <div class="card-b"><canvas id="cv3d" tabindex="0" role="img" aria-label="Superfície ajustada em três dimensões. Use as setas para girar."></canvas></div>
+      </section>
+      <!--APP-CELULAS-->
+      <section class="card" id="s-tree">
+        <div class="card-h"><h2 class="lab" id="v-rulelab">Árvore ajustada</h2><button class="info" aria-expanded="false" aria-controls="pop-tree" aria-label="Sobre o diagrama da árvore">i</button></div>
+        <div class="pop" id="pop-tree" hidden><p class="note">Cada folha mostra a média <i>ŷ<sub>R<sub>m</sub></sub></i> dos seus pontos e quantos são. Passe o mouse no gráfico: o ramo da raiz até a folha daquela posição acende aqui. Passe o mouse (ou toque) num nó para ver a região dele no gráfico.</p></div>
+        <div class="card-b"><div class="scrollbox" id="v-tree" tabindex="0" role="group" aria-label="Diagrama da árvore"></div></div>
+      </section>
+      <!--APP-CELULAS-FIM-->
+      <section class="card" id="s-bv" hidden>
+        <div class="card-h"><h2 class="lab">Viés e variância, como na Fig. 2.12</h2><button class="info" aria-expanded="false" aria-controls="pop-bv" aria-label="Sobre o gráfico de viés e variância">i</button></div>
+        <div class="pop" id="pop-bv" hidden><p class="note" id="v-bvnote"></p></div>
+        <div class="card-b"><div id="v-bv" class="mini" tabindex="0" role="slider" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0" aria-label="Viés ao quadrado, variância e MSE de teste esperado contra o parâmetro. Clique ou use as setas para escolher o valor."></div></div>
+      </section>
+    </div>
+  </main>
 </div>
 
 <script>
@@ -559,8 +611,17 @@ const App = {
     fits: (D, P, as) => as.map(a => { const t = Solver.fit(D.X, Array.from(D.y), { maxDepth: P.maxDepth, minLeaf: P.minLeaf, ccp: a/D.n }); return (x, y) => Solver.predictTree(t, x, y); }),
   },
   hov: null, focus: null, rebuilding: false, lastLeaf: null,
+  // Diagrama no cartão: encolhe para caber (até 70% do tamanho, para os rótulos continuarem legíveis); maior que isso, rola.
+  fitTree() {
+    const box = document.getElementById('v-tree'), sv = box && box.querySelector('svg');
+    if (!sv) return;
+    const vb = sv.viewBox.baseVal, cw = box.clientWidth, ch = box.clientHeight;
+    const s = cw && ch ? Math.max(.7, Math.min(1, cw/vb.width, ch/vb.height)) : 1;
+    sv.setAttribute('width', (vb.width*s).toFixed(1)); sv.setAttribute('height', (vb.height*s).toFixed(1));
+  },
   init(api) {
     const { $, state } = api;
+    if (window.ResizeObserver) new ResizeObserver(() => App.fitTree()).observe($('v-tree'));
     $('p-depth').addEventListener('input', e => { const v = Number(e.target.value); state.P.maxDepth = v > 12 ? null : v; state.flash = ''; api.render(); });
     $('p-depth-n').addEventListener('input', e => { const v = parseInt(e.target.value, 10); if (e.target.value === '') { state.P.maxDepth = null; api.render(); } else if (Number.isInteger(v) && v >= 1 && v <= 30) { state.P.maxDepth = v; state.flash = ''; api.render(); } });
     bindNum(api, 'p-leaf', 'p-leaf-n', 'minLeaf', 1, 20, { int: true });
@@ -724,6 +785,7 @@ const App = {
     const box2 = $('v-tree'), refocus = App.focus != null && document.activeElement !== box2 && box2.contains(document.activeElement);
     App.rebuilding = true;
     box2.innerHTML = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="group" aria-label="Diagrama da árvore de regressão com ${leaves.length} folhas. Setas: ↑ pai, ← filho da esquerda, → filho da direita.">${s}</svg>`;
+    App.fitTree();
     if (box2.dataset.w !== String(W)) { box2.dataset.w = W; box2.scrollLeft = (box2.scrollWidth - box2.clientWidth)/2; }
     if (refocus) { const g = box2.querySelector(`.tn[data-id="${App.focus}"]`); if (g) g.focus({ preventScroll: false }); }
     App.rebuilding = false;
@@ -1077,7 +1139,11 @@ const App = {
     if (has) notes.push(`Erro irredutível Var(<i>ϵ</i>) = <i>σ</i>² = <span class="num">${num(sg*sg, 3)}</span>: em média, nenhum método tem MSE de teste menor que isso, Eq. (2.7).`);
     if (vari && varOn()) notes.push(`Variabilidade em ${vari.models.length} amostras novas (${Math.min(NCURV, vari.models.length)} delas em cinza; a média de todas em pontilhado azul): viés² médio ≈ <span class="num">${num(vari.b2, 3)}</span> e variância média ≈ <span class="num">${num(vari.v, 3)}</span>, no intervalo dos dados. Viés² + variância + σ² ≈ <span class="num">${num(vari.b2 + vari.v + sg*sg, 3)}</span> estima o MSE de teste esperado, Eq. (2.7).`);
     notes.push('MSE como na Eq. (2.5), RSS/<i>n</i>; R² = 1 − RSS/TSS, Eq. (3.17), que no teste usa a média do teste, como o <code>score</code> do scikit-learn.');
-    $('v-data').innerHTML = s + `<p class="note">${notes.join(' ')}</p>`;
+    const short = [];
+    if (has) short.push(`Var(<i>ϵ</i>) = <span class="num">${num(sg*sg, 3)}</span>`);
+    if (vari && varOn()) short.push(`viés² ≈ <span class="num">${num(vari.b2, 3)}</span>`, `variância ≈ <span class="num">${num(vari.v, 3)}</span>`);
+    $('v-data').innerHTML = s + (short.length ? `<p class="note">${short.join(' · ')}</p>` : '');
+    $('v-datanote').innerHTML = notes.join(' ');
   }
 
   /* ---------- amostras novas do gerador: variabilidade, viés e variância (Eq. (2.7)) ---------- */
@@ -1205,12 +1271,12 @@ const App = {
   function drawBV() {
     const H = App.biasVar, box = $('v-bv');
     if (!H || $('s-bv').hidden) return;
-    const W = 300, Ht = 178, L = 40, Rr = 56, T = 10, Bm = 32, iw = W - L - Rr, ih = Ht - T - Bm;
+    const { W, H: Ht } = api.box('v-bv', 300, 178, 1.3, 2.6), L = 40, Rr = 56, T = 10, Bm = 32, iw = W - L - Rr, ih = Ht - T - Bm;
     const vals = bv ? bv.vals : H.values(api), ps = vals.map(H.pos), p0 = Math.min(...ps), p1 = Math.max(...ps);
     const X = p => L + (p - p0)/((p1 - p0) || 1)*iw;
     const cur = H.cur(state.P, state.model, api), pc = H.pos(cur);
     // Nada mudou desde o último desenho (por exemplo, durante o arraste de um ponto)? Então não refaz o SVG.
-    const sig = [bvKey, bv ? bv.R : -1, bvVis, Math.round(100*bvProg), pc].join('|');
+    const sig = [bvKey, bv ? bv.R : -1, bvVis, Math.round(100*bvProg), pc, W, Ht].join('|');
     if (sig === drawBV.sig && box.firstChild) return;
     drawBV.sig = sig;
     bvGeo = { W, X, vals, ps };
@@ -1241,6 +1307,8 @@ const App = {
     // Rótulos diretos à direita, afastados uns dos outros quando as curvas terminam perto
     const last = ps.indexOf(p1), labs = [{ t: 'MSE', y: Y(bv.mse[last]) }, { t: 'viés²', y: Y(bv.b2[last]) }, { t: 'variância', y: Y(bv.v[last]) }, { t: 'σ²', y: Y(bv.s2) }];
     labs.sort((a, b) => a.y - b.y);
+    // Curvas que saem por cima do quadro: o rótulo fica na borda de cima, não cortado
+    labs[0].y = Math.max(labs[0].y, T + 6);
     for (let q = 1; q < labs.length; q++) labs[q].y = Math.max(labs[q].y, labs[q - 1].y + 11);
     for (let q = labs.length - 1; q >= 0; q--) { if (labs[q].y > T + ih) labs[q].y = T + ih; if (q < labs.length - 1) labs[q].y = Math.min(labs[q].y, labs[q + 1].y - 11); }
     for (const lb of labs) s += `<text x="${L + iw + 4}" y="${(lb.y + 4).toFixed(1)}">${lb.t}</text>`;
@@ -1281,11 +1349,15 @@ const App = {
   const LH = Math.max(X1 - X0, Y1 - Y0)/2, ZS = .8, ZC = (VLO + VHI)/2, HZ = (VHI - VLO)/2;
   const LIGHT = (() => { const v = [-.35, -.55, .76], n = Math.hypot(...v); return v.map(c => c/n); })();
   let vis3 = true, dirty3 = false, raf3 = 0, rot3 = false, last3 = 0, fine3 = 0;
-  // Com mudanças seguidas (arraste de ponto, giro, controle deslizante: dois desenhos a menos de 0,2 s) os ladrilhos têm o dobro
-  // do tamanho, para o quadro continuar rápido; 0,22 s depois da última mudança, o 3D é redesenhado fino.
+  // Com mudanças seguidas da superfície (arraste de ponto, giro, controle deslizante: duas a menos de 0,2 s) os ladrilhos têm o
+  // dobro do tamanho, para o quadro continuar rápido; 0,22 s depois da última mudança, o 3D é redesenhado fino. Redesenhos que não
+  // mudam a superfície (o mouse passando sobre os pontos muda só o realce do ponto selecionado) ficam sempre finos.
+  let key3 = '';
   function busy3() {
-    const now = performance.now(), b = state.drag >= 0 || rot3 || now - last3 < 200;
-    last3 = now;
+    const now = performance.now(), k = JSON.stringify([state.points, state.P, state.show, state.dataset, state.sigma, state.rho, state.test.length]);
+    const changed = k !== key3, b = state.drag >= 0 || rot3 || (changed && now - last3 < 200);
+    if (!changed && !rot3 && state.drag < 0) return false;
+    key3 = k; last3 = now;
     if (b) { clearTimeout(fine3); fine3 = setTimeout(() => { last3 = 0; redraw3(); }, 220); }
     return b;
   }
@@ -1547,14 +1619,12 @@ const App = {
     let rd = '';
     if (m.ok && state.mode === 1 && state.show.resid) for (const p of pts) { const yh = m.f(p.x); if (Number.isFinite(yh)) rd += `M${px(p.x).toFixed(1)} ${py(p.y).toFixed(1)}V${py(Math.max(Y0 - 3, Math.min(Y1 + 3, yh))).toFixed(1)}`; }
     $('resid').setAttribute('d', rd);
-    const rings = (App.rings && m.ok) ? App.rings(m, api) : null;
     pts.forEach((p, i) => {
       const nd = nodes[i], x = px(p.x), y = py(p.y), active = i === state.drag || i === state.sel;
       attrs(nd.dot, { cx: x, cy: y, r: active ? 9 : 7.5 });
       attrs(nd.ring, { cx: x, cy: y });
       attrs(nd.hit, { cx: x, cy: y });
       nd.dot.style.fill = state.mode === 2 ? cssOf(p.v) : '';
-      nd.ring.style.display = rings && rings.has(i) ? '' : 'none';
       nd.n.setAttribute('aria-label', state.mode === 1 ? `Ponto em (${num(p.x)}; ${num(p.y)})` : `Ponto em (${num(p.x)}; ${num(p.y)}) com y = ${num(p.v)}`);
     });
     state.train = errors(m, pts);
@@ -1601,6 +1671,9 @@ const App = {
       if (Number.isFinite(v) && v > Y0 && v < Y1) { attrs(mk, { cx: px(state.probe.x), cy: py(v) }); mk.style.display = ''; }
     }
     if (App.probeDraw && m) App.probeDraw(m, state.probe, api);
+    // Anéis (vizinhos do KNN): seguem o ponto selecionado ou o mouse
+    const rings = (App.rings && m && m.ok) ? App.rings(m, api) : null;
+    state.points.forEach((p, i) => { if (nodes[i]) nodes[i].ring.style.display = rings && rings.has(i) ? '' : 'none'; });
   }
 
   let queued = false;
@@ -1692,10 +1765,11 @@ const App = {
   svg.addEventListener('pointercancel', endDrag);
   svg.addEventListener('touchmove', ev => { if (state.drag >= 0) ev.preventDefault(); }, { passive: false });
   svg.addEventListener('pointerleave', () => {
+    // Redesenha tudo (não só a sonda): os anéis da vizinhança e o realce dos apps dependem da posição do mouse
     let ch = false;
-    if (state.probe) { state.probe = null; updateProbe(); ch = true; }
-    if (state.drag < 0 && state.sel >= 0 && document.activeElement?.dataset?.i === undefined) { state.sel = -1; render(); }
-    else if (ch) narrate();
+    if (state.probe) { state.probe = null; ch = true; }
+    if (state.drag < 0 && state.sel >= 0 && document.activeElement?.dataset?.i === undefined) { state.sel = -1; ch = true; }
+    if (ch) render();
   });
   // Teclado: setas movem o ponto focado (Shift = passo maior); PageUp/PageDown (ou + e −) mudam a resposta y; Delete remove.
   svg.addEventListener('keydown', ev => {
@@ -1814,6 +1888,108 @@ const App = {
     };
     try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
   });
+  /* ---------- balões ⓘ: um aberto por vez, junto ao botão; fecham com Esc, clique fora ou outro ⓘ ---------- */
+  let popOpen = null;
+  function placePop() {
+    if (!popOpen) return;
+    const { b, p } = popOpen, r = b.getBoundingClientRect(), w = p.offsetWidth, h = p.offsetHeight, vw = innerWidth, vh = innerHeight;
+    const x = Math.max(8, Math.min(r.left - 10, vw - w - 8));
+    let y = r.bottom + 6;
+    if (y + h > vh - 8) y = r.top - 6 - h >= 8 ? r.top - 6 - h : Math.max(8, vh - h - 8);
+    p.style.left = x + 'px'; p.style.top = y + 'px';
+  }
+  const popRO = window.ResizeObserver ? new ResizeObserver(placePop) : null;
+  function closePop(focus) {
+    if (!popOpen) return;
+    const { b, p } = popOpen;
+    p.hidden = true; b.setAttribute('aria-expanded', 'false'); if (popRO) popRO.unobserve(p); popOpen = null;
+    if (focus) b.focus();
+  }
+  function openPop(b) {
+    const p = $(b.getAttribute('aria-controls'));
+    closePop();
+    p.hidden = false; b.setAttribute('aria-expanded', 'true'); popOpen = { b, p };
+    placePop(); if (popRO) popRO.observe(p);
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest && e.target.closest('button.info');
+    if (b) { if (popOpen && popOpen.b === b) closePop(); else openPop(b); return; }
+    if (popOpen && !popOpen.p.contains(e.target)) closePop();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && popOpen) { e.stopPropagation(); closePop(true); } }, true);
+  addEventListener('resize', placePop);
+  addEventListener('scroll', placePop, true);
+  // Código em R e Python numa caixa modal
+  const dlg = $('code-dlg');
+  $('code-open').addEventListener('click', () => { closePop(); dlg.showModal(); });
+  $('code-close').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', e => { if (e.target !== dlg) return; const r = dlg.getBoundingClientRect(); if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) dlg.close(); });
+  /* ---------- grade de gráficos: posição de cada cartão visível (data-n = quantos são) ---------- */
+  const narrow = window.matchMedia ? matchMedia('(max-width: 900px)') : { matches: false };
+  const cellsEl = $('cells');
+  function layoutCells() {
+    const cs = [...cellsEl.children].filter(c => c.classList.contains('card') && !c.hidden), S = cellsEl.style;
+    if (cellsEl.dataset.n !== String(cs.length)) cellsEl.dataset.n = cs.length;
+    const put = (c, r, k) => { if (c.style.gridRow !== r) c.style.gridRow = r; if (c.style.gridColumn !== k) c.style.gridColumn = k; };
+    const set = (k, v) => { if (S[k] !== v) S[k] = v; };
+    if (narrow.matches) { set('gridTemplateColumns', ''); set('gridTemplateRows', ''); cs.forEach(c => put(c, '', '')); return; }
+    const top = cs.filter(c => c.id === 's-main' || c.id === 's-3d'), rest = cs.filter(c => !top.includes(c)), K = rest.length;
+    if (top.length === 2) {
+      // Duas variáveis: mapa e 3D em cima, mais altos; os outros embaixo, lado a lado (C = mmc(2, K) colunas)
+      const C = !K ? 2 : K % 2 ? 2*K : K;
+      set('gridTemplateColumns', `repeat(${C}, minmax(0, 1fr))`);
+      set('gridTemplateRows', K ? 'minmax(0, 3fr) minmax(0, 2fr)' : 'minmax(0, 1fr)');
+      top.forEach((c, i) => put(c, '1', `${1 + i*C/2} / span ${C/2}`));
+      rest.forEach((c, i) => put(c, '2', `${1 + i*C/K} / span ${C/K}`));
+    } else if (K <= 3) {
+      // Uma variável: os dados à esquerda, na altura toda; até três gráficos empilhados à direita
+      set('gridTemplateColumns', K ? 'minmax(0, var(--mainw)) minmax(0, 1fr)' : 'minmax(0, 1fr)');
+      set('gridTemplateRows', `repeat(${Math.max(K, 1)}, minmax(0, 1fr))`);
+      if (top[0]) put(top[0], `1 / span ${Math.max(K, 1)}`, '1');
+      rest.forEach((c, i) => put(c, String(i + 1), '2'));
+    } else {
+      // Quatro ou mais: os dados à esquerda e os outros em duas colunas à direita
+      const R = Math.ceil(K/2);
+      set('gridTemplateColumns', 'minmax(0, var(--mainw)) repeat(2, minmax(0, 1fr))');
+      set('gridTemplateRows', `repeat(${R}, minmax(0, 1fr))`);
+      if (top[0]) put(top[0], `1 / span ${R}`, '1');
+      rest.forEach((c, i) => put(c, String(1 + (i >> 1)), String(2 + (i & 1))));
+    }
+  }
+  new MutationObserver(layoutCells).observe(cellsEl, { attributes: true, attributeFilter: ['hidden'], subtree: true });
+  addEventListener('resize', layoutCells);
+  // Gráficos pequenos (SVG com viewBox) num cartão: o maior tamanho que cabe nele, sem distorcer, para os cliques
+  // (que convertem pela largura do SVG) continuarem certos.
+  function fitMini(el) {
+    const sv = el.querySelector(':scope > svg');
+    if (!sv || !sv.viewBox || !sv.viewBox.baseVal || !sv.viewBox.baseVal.width) return;
+    if (narrow.matches || !el.parentElement.classList.contains('card-b')) { sv.style.width = sv.style.height = ''; return; }
+    const vb = sv.viewBox.baseVal, w = el.clientWidth, h = el.clientHeight;
+    if (!w || !h) return;
+    const k = Math.min(w/vb.width, h/vb.height);
+    sv.style.width = vb.width*k + 'px'; sv.style.height = vb.height*k + 'px';
+  }
+  // Tamanho, em unidades do viewBox, de um gráfico pequeno no cartão, para o texto (11,5 unidades) sair com ~12,5px.
+  // Proporção entre arMin e arMax; com a tela estreita, ou fora de um cartão, o tamanho padrão W0 × H0.
+  const ZM = 1.15;
+  api.box = (id, W0, H0, arMin = .6, arMax = 3) => {
+    const el = $(id);
+    if (!el || narrow.matches || !el.parentElement.classList.contains('card-b') || !el.clientWidth || !el.clientHeight) return { W: W0, H: H0 };
+    let W = el.clientWidth/ZM, H = el.clientHeight/ZM;
+    if (W/H > arMax) W = H*arMax; else if (W/H < arMin) H = W/arMin;
+    const k = Math.max(1, .8*W0/W);
+    return { W: Math.round(W*k), H: Math.round(H*k) };
+  };
+  const miniSz = new Map();
+  document.querySelectorAll('.card-b > .mini').forEach(el => {
+    new MutationObserver(() => fitMini(el)).observe(el, { childList: true });
+    if (window.ResizeObserver) new ResizeObserver(() => {
+      fitMini(el);
+      // O cartão mudou de tamanho: redesenha os gráficos no tamanho novo
+      const k = el.clientWidth + 'x' + el.clientHeight;
+      if (miniSz.get(el) !== k) { miniSz.set(el, k); if (state.model) { drawBV(); render(); } }
+    }).observe(el);
+  });
   // Gancho para os testes automáticos (testes/t_nav.py): estado e API da casca
   window.__regr = { state, api, DATA, loadData, desenha: () => computeAndDraw(), draw3d, evalSet, bv: () => bv, vari: () => vari, pontos: pts => { state.points = pts; state.sel = state.drag = -1; buildPoints(); if (App.dataChanged) App.dataChanged(api); } };
   copy('copy-r', 'code-r');
@@ -1835,6 +2011,7 @@ const App = {
   refreshTrue();
   buildPoints();
   if (App.startMode === 2) setMode(2); else computeAndDraw();
+  layoutCells();
 })();
 </script>
 </body>
